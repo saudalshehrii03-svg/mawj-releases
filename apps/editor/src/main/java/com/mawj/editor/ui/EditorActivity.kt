@@ -988,7 +988,8 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         val sheet = Sheet(this, L.t("فلاتر وتلوين", "Filters & color"), L.t("تلوين سينمائي احترافي — يطبق في المعاينة والتصدير", "Pro color grading — applied in preview and export"))
         val pct: (Float) -> String = { "${(it * 100).toInt()}" }
         val grades = com.mawj.editor.engine.ColorGrade.presets
-        sheet.chips(L.t("الفلتر", "Look"), listOf(L.t("بدون", "None")) + grades.map { it.label },
+        val base = thumbs.get(thumbKey(c))
+        sheet.thumbs(L.t("الفلتر", "Look"), listOf(L.t("بدون", "None") to gradePreview(base, "")) + grades.map { it.label to gradePreview(base, it.id) },
             grades.indexOfFirst { it.id == c.grade } + 1) { i ->
             edit { c.grade = if (i == 0) "" else grades[i - 1].id }
         }
@@ -1261,13 +1262,16 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         var durUs = clip.transitionUs
         val overlapKinds = Transition.entries.filter { it.overlap }
         val motionKinds = Transition.entries.filter { !it.overlap }
-        lateinit var g1: com.google.android.material.chip.ChipGroup
-        lateinit var g2: com.google.android.material.chip.ChipGroup
-        g1 = sheet.chips(L.t("✦ دمج احترافي (المقطعين فوق بعض)", "✦ Pro overlap (clips blend together)"), overlapKinds.map { it.label }, overlapKinds.indexOf(kind), required = false) {
-            kind = overlapKinds[it]; g2.clearCheck()
+        val ta = thumbs.get(thumbKey(clip))
+        val tb = project.clips.getOrNull(if (all) 1 else index + 1)?.let { thumbs.get(thumbKey(it)) }
+        var markMotion: (Int) -> Unit = {}
+        val markOverlap = sheet.thumbs(L.t("✦ دمج متداخل احترافي — المقطعين فوق بعض", "✦ Pro overlap — clips blend together"),
+            overlapKinds.map { it.label to transitionPreview(ta, tb, it) }, overlapKinds.indexOf(kind)) {
+            kind = overlapKinds[it]; markMotion(-1)
         }
-        g2 = sheet.chips(L.t("حركات القطع", "Cut motions"), motionKinds.map { it.label }, motionKinds.indexOf(kind), required = false) {
-            kind = motionKinds[it]; g1.clearCheck()
+        markMotion = sheet.thumbs(L.t("حركات القطع", "Cut motions"),
+            motionKinds.map { it.label to transitionPreview(ta, tb, it) }, motionKinds.indexOf(kind)) {
+            kind = motionKinds[it]; markOverlap(-1)
         }
         sheet.slider(L.t("المدة", "Duration"), 0.2f, 2f, durUs / 1e6f, { secs(it) }, 0.1f) { durUs = (it * 1e6).toLong() }
         if (!com.mawj.editor.model.Caps.overlapSupported) sheet.note(L.t("ℹ️ جهازك ما يدعم الدمج المتداخل؛ بيتحول لتلاشي ناعم.", "ℹ️ Your device can't overlap clips; a smooth fade is used instead."))
@@ -1533,6 +1537,68 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         sheet.button(L.t("ارفع على تيك توك (بالخطوات)", "Post to TikTok (guided)")) { sheet.dismiss(); showTikTokGuide(uri) }
         sheet.button(L.t("مشاركة", "Share"), outlined = true) { startActivity(Intent.createChooser(shareIntent(uri), L.t("مشاركة", "Share"))) }
         sheet.show()
+    }
+
+    // ---------- Preview tiles for sheets ----------
+
+    private fun squareOf(bm: Bitmap?, size: Int = 128): Bitmap {
+        val out = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val cv = android.graphics.Canvas(out)
+        if (bm == null) { cv.drawColor(0xFF3A3A40.toInt()); return out }
+        val side = minOf(bm.width, bm.height)
+        val src = android.graphics.Rect((bm.width - side) / 2, (bm.height - side) / 2, (bm.width + side) / 2, (bm.height + side) / 2)
+        cv.drawBitmap(bm, src, android.graphics.Rect(0, 0, size, size), android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG))
+        return out
+    }
+
+    /** Thumbnail with a color grade applied (same math as the video effect). */
+    private fun gradePreview(base: Bitmap?, id: String): Bitmap {
+        val sq = squareOf(base)
+        if (id.isEmpty()) return sq
+        val m = com.mawj.editor.engine.ColorGrade.matrix(id, 1f, 0f, 0f)
+        val cm = android.graphics.ColorMatrix(floatArrayOf(
+            m[0], m[4], m[8], 0f, m[12] * 255f,
+            m[1], m[5], m[9], 0f, m[13] * 255f,
+            m[2], m[6], m[10], 0f, m[14] * 255f,
+            0f, 0f, 0f, 1f, 0f,
+        ))
+        val out = Bitmap.createBitmap(sq.width, sq.height, Bitmap.Config.ARGB_8888)
+        android.graphics.Canvas(out).drawBitmap(sq, 0f, 0f, android.graphics.Paint().apply { colorFilter = android.graphics.ColorMatrixColorFilter(cm) })
+        return out
+    }
+
+    /** Mid-point frame of a transition between two thumbnails. */
+    private fun transitionPreview(a: Bitmap?, bb: Bitmap?, kind: Transition): Bitmap {
+        val s = 128f
+        val fa = squareOf(a)
+        val fb = squareOf(bb ?: a?.let { gradePreview(it, "cool") })
+        val out = Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888)
+        val cv = android.graphics.Canvas(out)
+        val p = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG)
+        cv.drawBitmap(fa, 0f, 0f, p)
+        when (kind) {
+            Transition.NONE -> {}
+            Transition.WIPE_LEFT -> { cv.save(); cv.clipRect(s / 2, 0f, s, s); cv.drawBitmap(fb, 0f, 0f, p); cv.restore() }
+            Transition.WIPE_RIGHT -> { cv.save(); cv.clipRect(0f, 0f, s / 2, s); cv.drawBitmap(fb, 0f, 0f, p); cv.restore() }
+            Transition.WIPE_UP -> { cv.save(); cv.clipRect(0f, s / 2, s, s); cv.drawBitmap(fb, 0f, 0f, p); cv.restore() }
+            Transition.WIPE_DOWN -> { cv.save(); cv.clipRect(0f, 0f, s, s / 2); cv.drawBitmap(fb, 0f, 0f, p); cv.restore() }
+            Transition.IRIS -> { cv.save(); cv.clipPath(android.graphics.Path().apply { addCircle(s / 2, s / 2, s * 0.32f, android.graphics.Path.Direction.CW) }); cv.drawBitmap(fb, 0f, 0f, p); cv.restore() }
+            Transition.CLOCK -> { cv.save(); cv.clipPath(android.graphics.Path().apply { moveTo(s / 2, s / 2); arcTo(-s, -s, 2 * s, 2 * s, -90f, 200f, false); close() }); cv.drawBitmap(fb, 0f, 0f, p); cv.restore() }
+            Transition.SLIDE_OVER_LEFT, Transition.SLIDE_LEFT, Transition.SLIDE_RIGHT, Transition.WHIP_PAN -> cv.drawBitmap(fb, s * 0.45f, 0f, p)
+            Transition.SLIDE_OVER_UP, Transition.SLIDE_UP, Transition.SLIDE_DOWN -> cv.drawBitmap(fb, 0f, s * 0.45f, p)
+            Transition.DIP_WHITE, Transition.FLASH -> cv.drawColor(0xB3FFFFFF.toInt())
+            Transition.FADE -> cv.drawColor(0xB3000000.toInt())
+            Transition.ZOOM_IN, Transition.ZOOM_BLUR, Transition.DISSOLVE_ZOOM -> {
+                cv.save(); cv.scale(1.35f, 1.35f, s / 2, s / 2); p.alpha = 140; cv.drawBitmap(fb, 0f, 0f, p); p.alpha = 255; cv.restore()
+            }
+            Transition.ZOOM_OUT, Transition.SPIN -> {
+                cv.drawColor(0xFF111111.toInt()); cv.save()
+                if (kind == Transition.SPIN) cv.rotate(35f, s / 2, s / 2)
+                cv.scale(0.7f, 0.7f, s / 2, s / 2); cv.drawBitmap(fa, 0f, 0f, p); cv.restore()
+            }
+            else -> { p.alpha = 128; cv.drawBitmap(fb, 0f, 0f, p); p.alpha = 255 }
+        }
+        return out
     }
 
     // ---------- Thumbnails ----------

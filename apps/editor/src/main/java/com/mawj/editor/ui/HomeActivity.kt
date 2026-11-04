@@ -42,6 +42,9 @@ class HomeActivity : AppCompatActivity() {
     private val store by lazy { (application as MawjApp).store }
     private val adapter = ProjectAdapter()
     private val thumbs = LruCache<String, Bitmap>(40)
+    /** Multi-select mode for bulk delete. */
+    private val selected = LinkedHashSet<String>()
+    private val selecting get() = selected.isNotEmpty()
     private var syncSheet: Sheet? = null
     private var syncStatus: TextView? = null
 
@@ -73,12 +76,15 @@ class HomeActivity : AppCompatActivity() {
         b.list.adapter = adapter
         b.brand.text = L.t("موج+", "MAWJ+")
         b.settingsPill.text = L.t("الإعدادات", "Settings")
-        b.settingsPill.setOnClickListener { showSettings() }
+        b.settingsPill.setOnClickListener { if (selecting) clearSelection() else showSettings() }
         b.newButton.setOnClickListener { newProject() }
         b.newTitle.text = L.t("مشروع جديد", "NEW PROJECT")
         b.newSubtitle.text = L.t("مقاطع • صوت • دمج • تصدير HD", "Clips • audio • transitions • HD export")
         b.newBadge.text = L.t("تيك توك HD", "TikTok HD")
-        b.accountLine.setOnClickListener { showAccount() }
+        b.accountLine.setOnClickListener { if (selecting) deleteSelected() else showAccount() }
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() { if (selecting) clearSelection() else finish() }
+        })
         b.empty.text = L.t("ما عندك مشاريع للحين\nاضغط «مشروع جديد» وابدأ", "No projects yet\nTap “New project” to start")
 
         tile(R.drawable.i_film, L.t("مونتاج", "Video editor")) { newProject() }
@@ -158,7 +164,49 @@ class HomeActivity : AppCompatActivity() {
         }
     }
 
+    private fun toggleSelect(p: Project) {
+        if (!selected.add(p.id)) selected.remove(p.id)
+        updateSelectionUi()
+    }
+
+    private fun clearSelection() {
+        selected.clear()
+        updateSelectionUi()
+    }
+
+    private fun updateSelectionUi() {
+        adapter.notifyDataSetChanged()
+        if (selecting) {
+            b.sectionTitle.text = L.t("${selected.size} محدد", "${selected.size} selected")
+            b.settingsPill.text = L.t("إلغاء", "Cancel")
+            b.accountLine.text = L.t("🗑 حذف", "🗑 Delete")
+            b.accountLine.setTextColor(0xFFFF6B6B.toInt())
+        } else {
+            b.sectionTitle.text = L.t("المشاريع", "PROJECTS")
+            b.settingsPill.text = L.t("الإعدادات", "Settings")
+            b.accountLine.setTextColor(0xFFFFFFFF.toInt())
+            updateAccountLine()
+        }
+    }
+
+    private fun deleteSelected() {
+        val ids = selected.toList()
+        val d = MaterialAlertDialogBuilder(this)
+            .setTitle(L.t("حذف ${ids.size} مشروع؟", "Delete ${ids.size} project(s)?"))
+            .setMessage(L.t("بتنحذف من الجهاز. النسخة الاحتياطية في جوجل (إن وجدت) تبقى.", "They'll be removed from this device. Your Google backup (if any) stays."))
+            .setNegativeButton(L.t("إلغاء", "Cancel"), null)
+            .setPositiveButton(L.t("حذف", "Delete")) { _, _ ->
+                ids.forEach { store.delete(it) }
+                selected.clear()
+                updateSelectionUi()
+                reload()
+            }
+            .show()
+        Glass.style(d)
+    }
+
     private fun updateAccountLine() {
+        if (selecting) return
         val email = SyncPrefs.email(this)
         b.accountLine.text = if (email != null) "☁️ " + email.substringBefore('@') else L.t("☁️ نسخ احتياطي", "☁️ Backup")
     }
@@ -355,9 +403,14 @@ class HomeActivity : AppCompatActivity() {
             val date = java.text.SimpleDateFormat("d MMM yy", if (L.en) Locale.ENGLISH else Locale("ar")).format(java.util.Date(p.updatedAt))
             h.v.duration.text = String.format(Locale.US, "%s     %02d:%02d     %dMB", date, sec / 60, sec % 60, size / 1_000_000)
             loadThumb(p, h.v.thumb)
-            h.v.card.setOnClickListener { open(p) }
-            h.v.card.setOnLongClickListener { menu(it, p); true }
-            h.v.more.setOnClickListener { menu(it, p) }
+            val isSel = p.id in selected
+            h.v.card.foreground = if (isSel) android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = dp(16).toFloat(); setStroke(dp(2), Glass.PINK); setColor(0x22F26B2A)
+            } else null
+            h.v.more.setImageResource(if (isSel) R.drawable.i_check else R.drawable.i_more)
+            h.v.card.setOnClickListener { if (selecting) toggleSelect(p) else open(p) }
+            h.v.card.setOnLongClickListener { toggleSelect(p); true }
+            h.v.more.setOnClickListener { if (selecting) toggleSelect(p) else menu(it, p) }
             Fonts.apply(h.v.root)
         }
     }

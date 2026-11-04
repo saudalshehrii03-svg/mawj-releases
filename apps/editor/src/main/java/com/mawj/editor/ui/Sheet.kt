@@ -3,6 +3,7 @@ package com.mawj.editor.ui
 import android.app.Dialog
 import android.content.Context
 import android.content.res.ColorStateList
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Shader
@@ -65,17 +66,17 @@ class Sheet(private val ctx: Context, title: String, subtitle: String? = null) {
     val dialog = BottomSheetDialog(ctx)
     private val body = LinearLayout(ctx).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(ctx.dp(22), ctx.dp(10), ctx.dp(22), ctx.dp(28))
+        setPadding(ctx.dp(18), ctx.dp(8), ctx.dp(18), ctx.dp(24))
     }
 
     init {
         // Grab handle
         body.addView(View(ctx).apply {
             background = GradientDrawable().apply { cornerRadius = ctx.dp(3).toFloat(); setColor(0x55FFFFFF) }
-        }, LinearLayout.LayoutParams(ctx.dp(40), ctx.dp(5)).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = ctx.dp(14) })
+        }, LinearLayout.LayoutParams(ctx.dp(36), ctx.dp(4)).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = ctx.dp(10) })
         body.addView(TextView(ctx).apply {
             text = title
-            textSize = 20f
+            textSize = 17f
             setTextColor(Color.WHITE)
             setTypeface(typeface, android.graphics.Typeface.BOLD)
         })
@@ -90,16 +91,20 @@ class Sheet(private val ctx: Context, title: String, subtitle: String? = null) {
             addView(body)
         }
         dialog.setContentView(scroll)
+        // Compact tool panel in the lower part of the screen; the video stays visible (no dim) above it.
+        val maxH = (ctx.resources.displayMetrics.heightPixels * 0.46f).toInt()
+        dialog.behavior.maxHeight = maxH
+        dialog.behavior.peekHeight = maxH
         dialog.behavior.state = BottomSheetBehavior.STATE_EXPANDED
         dialog.behavior.skipCollapsed = true
-        Glass.blurBehind(dialog, 36)
+        dialog.window?.setDimAmount(0f)
     }
 
     private fun label(t: String) = TextView(ctx).apply {
         text = t
-        textSize = 14f
-        setTextColor(0xD9FFFFFF.toInt())
-        setPadding(0, ctx.dp(14), 0, ctx.dp(4))
+        textSize = 13f
+        setTextColor(0x99FFFFFF.toInt())
+        setPadding(0, ctx.dp(12), 0, ctx.dp(2))
     }.also { body.addView(it) }
 
     fun text(t: String) = label(t)
@@ -131,6 +136,10 @@ class Sheet(private val ctx: Context, title: String, subtitle: String? = null) {
             } else value.coerceIn(from, to)
             setLabelFormatter { format(it) }
             trackActiveTintList = ColorStateList.valueOf(Glass.PINK)
+            isTickVisible = false
+            trackHeight = ctx.dp(4)
+            thumbRadius = ctx.dp(9)
+            haloRadius = ctx.dp(16)
             thumbTintList = ColorStateList.valueOf(Color.WHITE)
             trackInactiveTintList = ColorStateList.valueOf(0x33FFFFFF)
             addOnChangeListener { _, v, _ -> l.text = "$title: ${format(v)}" }
@@ -155,6 +164,10 @@ class Sheet(private val ctx: Context, title: String, subtitle: String? = null) {
             minSeparation = 0f
             setLabelFormatter { format(it) }
             trackActiveTintList = ColorStateList.valueOf(Glass.PINK)
+            isTickVisible = false
+            trackHeight = ctx.dp(4)
+            thumbRadius = ctx.dp(9)
+            haloRadius = ctx.dp(16)
             thumbTintList = ColorStateList.valueOf(Color.WHITE)
             trackInactiveTintList = ColorStateList.valueOf(0x33FFFFFF)
             addOnChangeListener { sl, _, _ -> l.text = "$title: ${format(sl.values[0])} → ${format(sl.values[1])}" }
@@ -169,7 +182,10 @@ class Sheet(private val ctx: Context, title: String, subtitle: String? = null) {
 
     fun chips(title: String?, options: List<String>, selected: Int, required: Boolean = true, onSelect: (Int) -> Unit): ChipGroup {
         if (title != null) label(title)
-        val g = ChipGroup(ctx).apply { isSingleSelection = true; isSelectionRequired = required; chipSpacingHorizontal = ctx.dp(8) }
+        val g = ChipGroup(ctx).apply {
+            isSingleSelection = true; isSelectionRequired = required; isSingleLine = true
+            chipSpacingHorizontal = ctx.dp(6)
+        }
         val states = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
         options.forEachIndexed { i, o ->
             g.addView(Chip(ctx).apply {
@@ -178,15 +194,54 @@ class Sheet(private val ctx: Context, title: String, subtitle: String? = null) {
                 isCheckable = true
                 isCheckedIconVisible = false
                 isChecked = i == selected
-                chipBackgroundColor = ColorStateList(states, intArrayOf(0x40F26B2A, 0x1AFFFFFF))
-                chipStrokeColor = ColorStateList(states, intArrayOf(Glass.PINK, 0x33FFFFFF))
-                chipStrokeWidth = ctx.dp(1).toFloat()
-                setTextColor(Color.WHITE)
+                chipMinHeight = ctx.dp(34).toFloat()
+                chipBackgroundColor = ColorStateList(states, intArrayOf(Glass.PINK, 0xFF26262B.toInt()))
+                chipStrokeWidth = 0f
+                setTextColor(ColorStateList(states, intArrayOf(0xFF111111.toInt(), 0xE6FFFFFF.toInt())))
+                setEnsureMinTouchTargetSize(false)
                 setOnClickListener { onSelect(i) }
             })
         }
-        body.addView(g)
+        val scroll = android.widget.HorizontalScrollView(ctx).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(g)
+        }
+        body.addView(scroll, LinearLayout.LayoutParams(-1, -2).apply { topMargin = ctx.dp(4) })
         return g
+    }
+
+    /** Horizontal row of square previews (filters, transitions...). */
+    fun thumbs(title: String?, items: List<Pair<String, Bitmap?>>, selected: Int, onSelect: (Int) -> Unit): (Int) -> Unit {
+        if (title != null) label(title)
+        val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
+        val frames = ArrayList<ImageView>()
+        fun mark(sel: Int) = frames.forEachIndexed { k, v ->
+            v.background = GradientDrawable().apply {
+                cornerRadius = ctx.dp(12).toFloat(); setColor(0xFF26262B.toInt())
+                if (k == sel) setStroke(ctx.dp(2), Glass.PINK)
+            }
+        }
+        items.forEachIndexed { i, (name, bm) ->
+            val col = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
+            val img = ImageView(ctx).apply {
+                setImageBitmap(bm)
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                clipToOutline = true
+                setPadding(ctx.dp(2), ctx.dp(2), ctx.dp(2), ctx.dp(2))
+                setOnClickListener { mark(i); onSelect(i) }
+            }
+            frames += img
+            col.addView(img, LinearLayout.LayoutParams(ctx.dp(64), ctx.dp(64)))
+            col.addView(TextView(ctx).apply {
+                text = name; textSize = 11f; setTextColor(0xCCFFFFFF.toInt()); maxLines = 1
+                gravity = Gravity.CENTER; setPadding(0, ctx.dp(4), 0, 0)
+            }, LinearLayout.LayoutParams(ctx.dp(72), -2))
+            row.addView(col, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = ctx.dp(6) })
+        }
+        mark(selected)
+        val scroll = android.widget.HorizontalScrollView(ctx).apply { isHorizontalScrollBarEnabled = false; addView(row) }
+        body.addView(scroll, LinearLayout.LayoutParams(-1, -2).apply { topMargin = ctx.dp(6) })
+        return { sel -> mark(sel) }
     }
 
     fun toggle(t: String, checked: Boolean, onChange: (Boolean) -> Unit): MaterialSwitch {
@@ -226,7 +281,7 @@ class Sheet(private val ctx: Context, title: String, subtitle: String? = null) {
             isFocusable = true
             setOnClickListener { onClick() }
         }
-        body.addView(b, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ctx.dp(52)).apply { topMargin = ctx.dp(12) })
+        body.addView(b, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ctx.dp(46)).apply { topMargin = ctx.dp(10) })
         return b
     }
 

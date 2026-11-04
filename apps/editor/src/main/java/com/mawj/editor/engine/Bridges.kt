@@ -44,6 +44,7 @@ import kotlin.math.roundToInt
 object Bridges {
 
     private const val VERSION = 3
+    private const val PI_F = Math.PI.toFloat()
 
     @Volatile var lastError: String? = null
         private set
@@ -264,7 +265,70 @@ object Bridges {
                         paint.alpha = (alpha * 255).roundToInt().coerceIn(0, 255)
                         canvas.drawBitmap(bm, m, paint)
                     }
+                    fun drawSmall(bm: Bitmap?, alpha: Float, scale: Float = 1f) {
+                        bm ?: return
+                        // Cheap blur: draw a tiny copy scaled back up with bilinear filtering.
+                        val small = Bitmap.createScaledBitmap(bm, (bm.width / 14).coerceAtLeast(2), (bm.height / 14).coerceAtLeast(2), true)
+                        draw(small, scale, 0f, 0f, alpha)
+                        small.recycle()
+                    }
                     when (kind) {
+                        Transition.BLUR_DISSOLVE -> {
+                            val blur = kotlin.math.sin(PI_F * e)
+                            draw(fa, 1f, 0f, 0f, 1f)
+                            draw(fb, 1f, 0f, 0f, e)
+                            drawSmall(fa, (1f - e) * blur)
+                            drawSmall(fb, e * blur)
+                        }
+                        Transition.DIP_WHITE -> {
+                            if (e < 0.5f) draw(fa, 1f, 0f, 0f, 1f) else draw(fb, 1f, 0f, 0f, 1f)
+                            val wa = if (e < 0.5f) e * 2f else (1f - e) * 2f
+                            canvas.drawColor(Color.argb((wa * 255).roundToInt().coerceIn(0, 255), 255, 255, 255))
+                        }
+                        Transition.WHIP_PAN -> {
+                            val off = w * e
+                            for (k in 0 until 5) {
+                                val trail = k * w * 0.04f * kotlin.math.sin(PI_F * e)
+                                draw(fa, 1f, -off - trail, 0f, if (k == 0) 1f else 0.25f)
+                                draw(fb, 1f, w - off - trail, 0f, if (k == 0) 1f else 0.25f)
+                            }
+                        }
+                        Transition.ZOOM_BLUR -> {
+                            for (k in 0 until 4) draw(fa, 1f + e * (0.6f + k * 0.12f), 0f, 0f, (1f - e) * (if (k == 0) 1f else 0.3f))
+                            draw(fb, 1.25f - 0.25f * e, 0f, 0f, e)
+                        }
+                        Transition.WIPE_LEFT, Transition.WIPE_RIGHT, Transition.WIPE_UP, Transition.WIPE_DOWN -> {
+                            draw(fa, 1f, 0f, 0f, 1f)
+                            canvas.save()
+                            when (kind) {
+                                Transition.WIPE_LEFT -> canvas.clipRect(w * (1f - e), 0f, w.toFloat(), h.toFloat())
+                                Transition.WIPE_RIGHT -> canvas.clipRect(0f, 0f, w * e, h.toFloat())
+                                Transition.WIPE_UP -> canvas.clipRect(0f, h * (1f - e), w.toFloat(), h.toFloat())
+                                else -> canvas.clipRect(0f, 0f, w.toFloat(), h * e)
+                            }
+                            draw(fb, 1f, 0f, 0f, 1f)
+                            canvas.restore()
+                        }
+                        Transition.IRIS -> {
+                            draw(fa, 1f, 0f, 0f, 1f)
+                            canvas.save()
+                            val r = e * kotlin.math.hypot(w.toFloat(), h.toFloat()) / 2f
+                            canvas.clipPath(android.graphics.Path().apply { addCircle(w / 2f, h / 2f, r, android.graphics.Path.Direction.CW) })
+                            draw(fb, 1f, 0f, 0f, 1f)
+                            canvas.restore()
+                        }
+                        Transition.CLOCK -> {
+                            draw(fa, 1f, 0f, 0f, 1f)
+                            canvas.save()
+                            val big = kotlin.math.hypot(w.toFloat(), h.toFloat())
+                            canvas.clipPath(android.graphics.Path().apply {
+                                moveTo(w / 2f, h / 2f)
+                                arcTo(w / 2f - big, h / 2f - big, w / 2f + big, h / 2f + big, -90f, 360f * e, false)
+                                close()
+                            })
+                            draw(fb, 1f, 0f, 0f, 1f)
+                            canvas.restore()
+                        }
                         Transition.DISSOLVE_ZOOM -> {
                             draw(fa, 1f + 0.12f * e, 0f, 0f, 1f)
                             draw(fb, 1.15f - 0.15f * e, 0f, 0f, e)

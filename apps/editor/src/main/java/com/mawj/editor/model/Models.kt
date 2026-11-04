@@ -27,27 +27,31 @@ object Caps {
     @Volatile var overlapSupported = true
 }
 
-enum class Transition(val label: String, val overlap: Boolean = false) {
-    NONE("بدون"),
-    DISSOLVE("دمج ناعم", true),
-    DISSOLVE_ZOOM("دمج بتقريب", true),
-    SLIDE_OVER_LEFT("انزلاق ←", true),
-    SLIDE_OVER_UP("انزلاق ↑", true),
-    FADE("تلاشي أسود"),
-    FLASH("وميض"),
-    ZOOM_IN("تقريب"),
-    ZOOM_OUT("تبعيد"),
-    SLIDE_LEFT("دفع ←"),
-    SLIDE_RIGHT("دفع →"),
-    SLIDE_UP("دفع ↑"),
-    SLIDE_DOWN("دفع ↓"),
-    SPIN("دوران"),
-    GLITCH("جليتش"),
-    SHAKE("اهتزاز"),
+enum class Transition(private val ar: String, private val en: String, val overlap: Boolean = false) {
+    NONE("بدون", "None"),
+    DISSOLVE("دمج ناعم", "Dissolve", true),
+    DISSOLVE_ZOOM("دمج بتقريب", "Zoom dissolve", true),
+    SLIDE_OVER_LEFT("انزلاق ←", "Slide ←", true),
+    SLIDE_OVER_UP("انزلاق ↑", "Slide ↑", true),
+    FADE("تلاشي أسود", "Fade to black"),
+    FLASH("وميض", "Flash"),
+    ZOOM_IN("تقريب", "Zoom in"),
+    ZOOM_OUT("تبعيد", "Zoom out"),
+    SLIDE_LEFT("دفع ←", "Push ←"),
+    SLIDE_RIGHT("دفع →", "Push →"),
+    SLIDE_UP("دفع ↑", "Push ↑"),
+    SLIDE_DOWN("دفع ↓", "Push ↓"),
+    SPIN("دوران", "Spin"),
+    GLITCH("جليتش", "Glitch"),
+    SHAKE("اهتزاز", "Shake");
+
+    val label: String get() = com.mawj.editor.L.t(ar, en)
 }
 
-enum class TextPos(val label: String, val y: Float) {
-    TOP("أعلى", 0.7f), CENTER("وسط", 0f), BOTTOM("أسفل", -0.7f)
+enum class TextPos(private val ar: String, private val en: String, val y: Float) {
+    TOP("أعلى", "Top", 0.7f), CENTER("وسط", "Center", 0f), BOTTOM("أسفل", "Bottom", -0.7f);
+
+    val label: String get() = com.mawj.editor.L.t(ar, en)
 }
 
 fun newId(): String = UUID.randomUUID().toString().substring(0, 12)

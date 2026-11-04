@@ -1,50 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/card"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:padding="6dp">
+    android:layout_marginBottom="10dp"
+    android:background="@drawable/row_card"
+    android:orientation="horizontal"
+    android:padding="8dp">
+
+    <ImageView
+        android:id="@+id/thumb"
+        android:layout_width="84dp"
+        android:layout_height="84dp"
+        android:background="@drawable/bg_thumb"
+        android:clipToOutline="true"
+        android:scaleType="centerCrop" />
 
     <LinearLayout
-        android:id="@+id/card"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="@drawable/glass_ripple_card"
-        android:orientation="vertical"
-        android:padding="8dp">
-
-        <FrameLayout
-            android:layout_width="match_parent"
-            android:layout_height="210dp">
-
-            <ImageView
-                android:id="@+id/thumb"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:background="@drawable/bg_thumb"
-                android:clipToOutline="true"
-                android:scaleType="centerCrop" />
-
-            <TextView
-                android:id="@+id/duration"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="bottom|start"
-                android:layout_margin="8dp"
-                android:background="@drawable/glass_pill"
-                android:paddingStart="10dp"
-                android:paddingTop="3dp"
-                android:paddingEnd="10dp"
-                android:paddingBottom="3dp"
-                android:textColor="#FFFFFF"
-                android:textSize="12sp" />
-        </FrameLayout>
+        android:layout_width="0dp"
+        android:layout_height="84dp"
+        android:layout_marginStart="12dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
 
         <TextView
             android:id="@+id/name"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginStart="4dp"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="4dp"
             android:ellipsize="end"
             android:maxLines="1"
             android:textColor="#FFFFFF"
@@ -55,11 +38,35 @@
             android:id="@+id/info"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginStart="4dp"
-            android:layout_marginBottom="2dp"
+            android:layout_marginTop="2dp"
             android:ellipsize="end"
             android:maxLines="1"
-            android:textColor="#99FFFFFF"
+            android:textColor="#8AFFFFFF"
             android:textSize="12sp" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <TextView
+            android:id="@+id/duration"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="2dp"
+            android:fontFeatureSettings="tnum"
+            android:maxLines="1"
+            android:textColor="#66FFFFFF"
+            android:textSize="11sp" />
     </LinearLayout>
-</FrameLayout>
+
+    <ImageButton
+        android:id="@+id/more"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:background="@drawable/pill_dark"
+        android:contentDescription="more"
+        android:padding="6dp"
+        android:scaleType="fitCenter"
+        android:src="@drawable/i_more" />
+</LinearLayout>

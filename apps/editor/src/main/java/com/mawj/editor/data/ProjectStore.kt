@@ -1,5 +1,7 @@
 package com.mawj.editor.data
 
+import com.mawj.editor.L
+
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
@@ -51,7 +53,7 @@ class ProjectStore(context: Context) {
 
     fun duplicate(id: String): Project {
         val p = load(id)
-        val copy = Project(name = p.name + " (نسخة)", aspect = p.aspect)
+        val copy = Project(name = p.name + L.t(" (نسخة)", " (copy)"), aspect = p.aspect)
         copy.clips += p.clips.map { it.copy() }
         copy.audios += p.audios.map { it.copy() }
         mediaDir(id).copyRecursively(mediaDir(copy.id), overwrite = true)
@@ -97,7 +99,7 @@ class ProjectStore(context: Context) {
         if (kind == Imported.Kind.IMAGE) {
             val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeFile(out.absolutePath, o)
-            if (o.outWidth <= 0) { out.delete(); error("صورة غير صالحة") }
+            if (o.outWidth <= 0) { out.delete(); error(L.t("صورة غير صالحة", "Invalid image")) }
             return Imported(name, kind, 3_000_000, display)
         }
         val r = MediaMetadataRetriever()
@@ -105,7 +107,7 @@ class ProjectStore(context: Context) {
             r.setDataSource(out.absolutePath)
             r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
         } finally { r.release() }
-        if (durMs <= 0) { out.delete(); error("ملف غير مدعوم") }
+        if (durMs <= 0) { out.delete(); error(L.t("ملف غير مدعوم", "Unsupported file")) }
         return Imported(name, kind, durMs * 1000, display.substringBeforeLast('.'))
     }
 

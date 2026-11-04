@@ -1,5 +1,7 @@
 package com.mawj.editor.ui
 
+import com.mawj.editor.L
+
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -223,7 +225,7 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
         }
         if (audios.isEmpty()) {
             text.color = 0x80FFFFFF.toInt()
-            canvas.drawText("♪ مسار الصوت — أضف صوت أو استخرجه من مقطع", width / 2f + 10 * d, audioTop + laneH / 2 + 4 * d, text)
+            canvas.drawText(L.t("♪ مسار الصوت — أضف صوت أو استخرجه من مقطع", "♪ Audio track — add audio or extract it from a clip"), width / 2f + 10 * d, audioTop + laneH / 2 + 4 * d, text)
             text.color = Color.WHITE
         }
 

@@ -1,5 +1,7 @@
 package com.mawj.editor.sync
 
+import com.mawj.editor.L
+
 import android.content.Context
 import com.google.android.gms.auth.api.identity.AuthorizationRequest
 import com.google.android.gms.auth.api.identity.AuthorizationResult
@@ -51,7 +53,7 @@ object GoogleAuth {
     fun friendlyError(e: Throwable): String {
         val msg = e.message ?: e.javaClass.simpleName
         return if (msg.contains("10:") || msg.contains("DEVELOPER_ERROR") || msg.contains("16:")) {
-            "تسجيل الدخول بجوجل يحتاج إعداد مرة وحدة في Google Cloud (شوف ملف apps/editor/GOOGLE_SETUP.md).\n($msg)"
+            L.t("تسجيل الدخول بجوجل يحتاج إعداد مرة وحدة في Google Cloud (شوف ملف apps/editor/GOOGLE_SETUP.md).\n($msg)", "Google sign-in needs a one-time setup in Google Cloud (see apps/editor/GOOGLE_SETUP.md).\n($msg)")
         } else msg
     }
 }
@@ -156,14 +158,14 @@ class DriveSync(private val store: ProjectStore) {
                 val rel = "media/" + f.name
                 val r = remote[p.id + "/" + rel]
                 if (r == null || r.size != f.length()) {
-                    progress("رفع «${p.name}» (${pi + 1}/${projects.size}) — ملف ${mi + 1}/${media.size}")
+                    progress(L.t("رفع «${p.name}» (${pi + 1}/${projects.size}) — ملف ${mi + 1}/${media.size}", "Uploading “${p.name}” (${pi + 1}/${projects.size}) — file ${mi + 1}/${media.size}"))
                     uploadFile(token, f, p.id, rel, "application/octet-stream", r?.id)
                 }
             }
             val json = File(store.dir(p.id), "project.json")
             uploadFile(token, json, p.id, "project.json", "application/json", remote[p.id + "/project.json"]?.id)
         }
-        progress("تم النسخ الاحتياطي ✅")
+        progress(L.t("تم النسخ الاحتياطي ✅", "Backup complete ✅"))
     }
 
     /** Downloads projects that are missing locally or newer in the cloud. Returns how many were restored. */
@@ -179,7 +181,7 @@ class DriveSync(private val store: ProjectStore) {
             if (remoteProject == null) { tmp.delete(); return@forEachIndexed }
             val local = runCatching { store.load(pid) }.getOrNull()
             if (local != null && local.updatedAt >= remoteProject.updatedAt) { tmp.delete(); return@forEachIndexed }
-            progress("تنزيل «${remoteProject.name}» (${i + 1}/${byProject.size})")
+            progress(L.t("تنزيل «${remoteProject.name}» (${i + 1}/${byProject.size})", "Downloading “${remoteProject.name}” (${i + 1}/${byProject.size})"))
             files.filter { it.rel.startsWith("media/") }.forEach { f ->
                 val name = f.rel.removePrefix("media/")
                 if (name.contains("/") || name.contains("..")) return@forEach
@@ -190,7 +192,7 @@ class DriveSync(private val store: ProjectStore) {
             tmp.delete()
             count++
         }
-        progress(if (count > 0) "تمت استعادة $count مشروع ✅" else "مشاريعك محدّثة، ما فيه شي جديد")
+        progress(if (count > 0) L.t("تمت استعادة $count مشروع ✅", "Restored $count project(s) ✅") else L.t("مشاريعك محدّثة، ما فيه شي جديد", "Your projects are up to date"))
         return count
     }
 }

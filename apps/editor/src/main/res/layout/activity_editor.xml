@@ -4,99 +4,78 @@
     android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#FF0C0C10"
+    android:background="#FF0F0F11"
     android:fitsSystemWindows="true"
     android:orientation="vertical">
 
-    <!-- Top bar -->
+    <!-- Top bar: back • name | ratio • more • export -->
     <LinearLayout
         android:id="@+id/topBar"
         android:layout_width="match_parent"
-        android:layout_height="52dp"
+        android:layout_height="56dp"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingStart="6dp"
-        android:paddingEnd="10dp">
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp">
 
         <ImageButton
             android:id="@+id/backButton"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:background="@drawable/btn_flat"
-            android:contentDescription="رجوع"
-            android:padding="11dp"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="@drawable/glass_ripple_circle"
+            android:contentDescription="back"
+            android:padding="8dp"
             android:scaleType="fitCenter"
-            android:src="@drawable/ic_back" />
+            android:src="@drawable/i_back_arrow" />
 
-        <LinearLayout
+        <TextView
+            android:id="@+id/title"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
             android:layout_weight="1"
-            android:orientation="vertical">
-
-            <TextView
-                android:id="@+id/title"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:textColor="#FFFFFF"
-                android:textSize="15sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/subtitle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:maxLines="1"
-                android:textColor="#80FFFFFF"
-                android:textSize="11sp" />
-        </LinearLayout>
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="#99FFFFFF"
+            android:textSize="13sp" />
 
         <ImageButton
-            android:id="@+id/undoButton"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:background="@drawable/btn_flat"
-            android:contentDescription="تراجع"
-            android:padding="10dp"
+            android:id="@+id/moreButton"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="@drawable/glass_ripple_circle"
+            android:contentDescription="more"
+            android:padding="8dp"
             android:scaleType="fitCenter"
-            android:src="@drawable/ic_undo" />
-
-        <ImageButton
-            android:id="@+id/redoButton"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:background="@drawable/btn_flat"
-            android:contentDescription="إعادة"
-            android:padding="10dp"
-            android:scaleType="fitCenter"
-            android:src="@drawable/ic_redo" />
+            android:src="@drawable/i_more" />
 
         <TextView
             android:id="@+id/exportButton"
             android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:layout_marginStart="6dp"
+            android:layout_height="32dp"
+            android:layout_marginStart="8dp"
             android:background="@drawable/btn_accent"
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
             android:paddingStart="16dp"
             android:paddingEnd="16dp"
-            android:text="تصدير"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp"
+            android:textColor="#FF111111"
+            android:textSize="13sp"
             android:textStyle="bold" />
     </LinearLayout>
 
-    <!-- Preview (grows / shrinks with the handle) -->
+    <!-- Preview -->
     <FrameLayout
         android:id="@+id/previewCard"
         android:layout_width="match_parent"
         android:layout_height="0dp"
+        android:layout_marginStart="14dp"
+        android:layout_marginTop="4dp"
+        android:layout_marginEnd="14dp"
         android:layout_weight="1"
-        android:background="#FF000000">
+        android:background="@drawable/glass_card"
+        android:clipToOutline="true">
 
         <androidx.media3.ui.PlayerView
             android:id="@+id/playerView"
@@ -112,11 +91,18 @@
             android:layout_height="wrap_content"
             android:layout_gravity="center"
             android:gravity="center"
-            android:lineSpacingExtra="6dp"
             android:padding="24dp"
-            android:text="أضف مقاطع أو صور للبدء"
             android:textColor="#80FFFFFF"
             android:textSize="14sp" />
+
+        <!-- Action feedback chips (e.g. "Clip split") -->
+        <LinearLayout
+            android:id="@+id/chips"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|start"
+            android:layout_margin="10dp"
+            android:orientation="vertical" />
 
         <TextView
             android:id="@+id/bridgeStatus"
@@ -124,17 +110,15 @@
             android:layout_height="wrap_content"
             android:layout_gravity="top|center_horizontal"
             android:layout_marginTop="10dp"
-            android:background="@drawable/glass_pill"
+            android:background="@drawable/pill_dark"
             android:paddingStart="12dp"
             android:paddingTop="4dp"
             android:paddingEnd="12dp"
             android:paddingBottom="4dp"
-            android:text="جاري تجهيز الدمج…"
             android:textColor="#FFFFFF"
             android:textSize="12sp"
             android:visibility="gone" />
 
-        <!-- Full screen controls -->
         <LinearLayout
             android:id="@+id/fullControls"
             android:layout_width="match_parent"
@@ -152,7 +136,7 @@
                 android:layout_width="44dp"
                 android:layout_height="44dp"
                 android:background="@drawable/btn_flat"
-                android:contentDescription="تشغيل"
+                android:contentDescription="play"
                 android:padding="10dp"
                 android:scaleType="fitCenter"
                 android:src="@drawable/ic_play" />
@@ -163,7 +147,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:max="1000"
-                android:progressTint="#FFFF2D7A"
+                android:progressTint="#FFF26B2A"
                 android:thumbTint="#FFFFFFFF" />
 
             <ImageButton
@@ -171,96 +155,142 @@
                 android:layout_width="44dp"
                 android:layout_height="44dp"
                 android:background="@drawable/btn_flat"
-                android:contentDescription="خروج"
+                android:contentDescription="exit"
                 android:padding="11dp"
                 android:scaleType="fitCenter"
                 android:src="@drawable/i_close" />
         </LinearLayout>
     </FrameLayout>
 
-    <!-- Bottom editor panel; its height is set by dragging the handle -->
+    <!-- Bottom editor panel (height set by dragging the handle) -->
     <LinearLayout
         android:id="@+id/bottomPanel"
         android:layout_width="match_parent"
         android:layout_height="380dp"
-        android:background="#FF0C0C10"
         android:orientation="vertical">
 
-        <!-- Drag handle + transport -->
+        <!-- Control bar: full screen • mute | play | undo • redo  (also the resize handle) -->
         <FrameLayout
             android:id="@+id/handle"
             android:layout_width="match_parent"
-            android:layout_height="52dp"
-            android:layoutDirection="ltr"
+            android:layout_height="wrap_content"
             android:paddingStart="14dp"
+            android:paddingTop="10dp"
             android:paddingEnd="14dp">
 
-            <View
-                android:layout_width="36dp"
-                android:layout_height="4dp"
-                android:layout_gravity="top|center_horizontal"
-                android:layout_marginTop="5dp"
-                android:background="@drawable/handle_bar" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:background="@drawable/bar_dark"
+                android:gravity="center_vertical"
+                android:layoutDirection="ltr"
+                android:orientation="horizontal"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp">
+
+                <ImageButton
+                    android:id="@+id/fullButton"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
+                    android:alpha="0.7"
+                    android:background="@drawable/btn_flat"
+                    android:contentDescription="full screen"
+                    android:padding="10dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/i_expand" />
+
+                <ImageButton
+                    android:id="@+id/muteButton"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
+                    android:alpha="0.7"
+                    android:background="@drawable/btn_flat"
+                    android:contentDescription="mute"
+                    android:padding="10dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/i_volume" />
+
+                <View
+                    android:layout_width="0dp"
+                    android:layout_height="1dp"
+                    android:layout_weight="1" />
+
+                <ImageButton
+                    android:id="@+id/playButton"
+                    android:layout_width="42dp"
+                    android:layout_height="42dp"
+                    android:background="@drawable/btn_flat"
+                    android:contentDescription="play"
+                    android:padding="10dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_play" />
+
+                <View
+                    android:layout_width="0dp"
+                    android:layout_height="1dp"
+                    android:layout_weight="1" />
+
+                <ImageButton
+                    android:id="@+id/undoButton"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
+                    android:background="@drawable/btn_flat"
+                    android:contentDescription="undo"
+                    android:padding="10dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_undo" />
+
+                <ImageButton
+                    android:id="@+id/redoButton"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
+                    android:background="@drawable/btn_flat"
+                    android:contentDescription="redo"
+                    android:padding="10dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_redo" />
+            </LinearLayout>
+        </FrameLayout>
+
+        <!-- Time -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="8dp"
+            android:layoutDirection="ltr"
+            android:orientation="horizontal">
 
             <TextView
                 android:id="@+id/timeText"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical|start"
                 android:fontFeatureSettings="tnum"
-                android:text="00:00.00"
                 android:textColor="#FFFFFF"
-                android:textSize="13sp" />
+                android:textSize="11sp" />
 
             <TextView
                 android:id="@+id/durationText"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:layout_marginStart="72dp"
+                android:layout_marginStart="6dp"
                 android:fontFeatureSettings="tnum"
-                android:text="/ 00:00.00"
                 android:textColor="#66FFFFFF"
-                android:textSize="13sp" />
+                android:textSize="11sp" />
+        </LinearLayout>
 
-            <ImageButton
-                android:id="@+id/playButton"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:layout_gravity="center"
-                android:layout_marginTop="3dp"
-                android:background="@drawable/btn_flat"
-                android:contentDescription="تشغيل"
-                android:padding="10dp"
-                android:scaleType="fitCenter"
-                android:src="@drawable/ic_play" />
-
-            <ImageButton
-                android:id="@+id/fullButton"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:layout_gravity="center_vertical|end"
-                android:background="@drawable/btn_flat"
-                android:contentDescription="ملء الشاشة"
-                android:padding="10dp"
-                android:scaleType="fitCenter"
-                android:src="@drawable/i_fit" />
-        </FrameLayout>
-
-        <!-- Timeline (scrolls vertically when the panel is small) -->
+        <!-- Timeline -->
         <androidx.core.widget.NestedScrollView
             android:id="@+id/timelineScroll"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:background="#FF111116"
             android:fillViewport="true">
 
             <com.mawj.editor.ui.TimelineView
                 android:id="@+id/timeline"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:paddingTop="4dp" />
+                android:layout_height="wrap_content" />
         </androidx.core.widget.NestedScrollView>
 
         <TextView
@@ -268,25 +298,27 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="16dp"
-            android:layout_marginTop="6dp"
             android:maxLines="1"
-            android:textColor="#80FFFFFF"
+            android:textColor="#66FFFFFF"
             android:textSize="11sp" />
 
+        <!-- Tool bar -->
         <HorizontalScrollView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:background="#FF141416"
             android:scrollbars="none">
 
             <LinearLayout
                 android:id="@+id/tools"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:minHeight="64dp"
                 android:orientation="horizontal"
                 android:paddingStart="4dp"
                 android:paddingTop="6dp"
                 android:paddingEnd="4dp"
-                android:paddingBottom="8dp" />
+                android:paddingBottom="6dp" />
         </HorizontalScrollView>
     </LinearLayout>
 </LinearLayout>

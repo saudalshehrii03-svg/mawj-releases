@@ -1,5 +1,7 @@
 package com.mawj.editor.engine
 
+import com.mawj.editor.L
+
 import android.content.Context
 import android.graphics.Typeface
 import android.media.MediaMetadataRetriever
@@ -68,7 +70,7 @@ object CompositionFactory {
     }
 
     fun build(context: Context, store: ProjectStore, project: Project, opt: BuildOptions): Composition {
-        require(project.clips.isNotEmpty()) { "المشروع فاضي" }
+        require(project.clips.isNotEmpty()) { L.t("المشروع فاضي", "The project is empty") }
         val clips = project.clips
         val items = ArrayList<EditedMediaItem>()
 

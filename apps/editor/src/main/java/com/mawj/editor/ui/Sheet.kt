@@ -29,7 +29,7 @@ import com.mawj.editor.R
 fun Context.dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
 object Glass {
-    const val PINK = 0xFFFF2D7A.toInt()
+    const val PINK = 0xFFF26B2A.toInt()
     const val VIOLET = 0xFF8B5CF6.toInt()
     const val CYAN = 0xFF25F4EE.toInt()
 
@@ -178,7 +178,7 @@ class Sheet(private val ctx: Context, title: String, subtitle: String? = null) {
                 isCheckable = true
                 isCheckedIconVisible = false
                 isChecked = i == selected
-                chipBackgroundColor = ColorStateList(states, intArrayOf(0x66FF2D7A, 0x1AFFFFFF))
+                chipBackgroundColor = ColorStateList(states, intArrayOf(0x40F26B2A, 0x1AFFFFFF))
                 chipStrokeColor = ColorStateList(states, intArrayOf(Glass.PINK, 0x33FFFFFF))
                 chipStrokeWidth = ctx.dp(1).toFloat()
                 setTextColor(Color.WHITE)

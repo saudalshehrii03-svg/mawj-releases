@@ -1,5 +1,7 @@
 package com.mawj.editor.engine
 
+import com.mawj.editor.L
+
 import android.content.ContentValues
 import android.content.Context
 import android.media.MediaCodec
@@ -157,7 +159,7 @@ object MediaJobs {
             put(MediaStore.Video.Media.IS_PENDING, 1)
         }
         val uri = cr.insert(MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), values)
-            ?: error("تعذّر الحفظ")
+            ?: error(L.t("تعذّر الحفظ", "Couldn't save"))
         try {
             cr.openOutputStream(uri)!!.use { o -> file.inputStream().use { it.copyTo(o, 1 shl 20) } }
             values.clear()

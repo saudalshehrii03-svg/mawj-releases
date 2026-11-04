@@ -1,7 +1,3 @@
-<ripple xmlns:android="http://schemas.android.com/apk/res/android" android:color="#55FFFFFF">
-    <item>
-        <shape android:shape="oval">
-            <gradient android:angle="315" android:startColor="#FFFF2D7A" android:endColor="#FF8B5CF6" />
-        </shape>
-    </item>
+<ripple xmlns:android="http://schemas.android.com/apk/res/android" android:color="#44FFFFFF">
+    <item><shape android:shape="oval"><solid android:color="#FFF26B2A" /></shape></item>
 </ripple>

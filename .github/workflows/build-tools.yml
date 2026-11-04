@@ -77,3 +77,14 @@ jobs:
 
             التثبيت: نزّل ملف الـ APK من الجوال ← افتحه ← اسمح بالتثبيت من مصادر غير معروفة.
           files: out/*.apk
+          # Never take over "Latest": the main Mawj app's updater relies on it.
+          prerelease: true
+          make_latest: "false"
+
+      - name: Keep tools releases out of "Latest"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for t in $(gh release list -R "$GITHUB_REPOSITORY" --limit 100 --json tagName -q '.[].tagName | select(startswith("tools-v"))'); do
+            gh release edit "$t" -R "$GITHUB_REPOSITORY" --prerelease --latest=false
+          done

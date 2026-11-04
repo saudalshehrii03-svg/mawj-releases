@@ -37,6 +37,8 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
         fun onClipTrim(index: Int, edge: Int, deltaUs: Long)
         fun onAudioTrim(index: Int, edge: Int, deltaUs: Long)
         fun onAddTap()
+        /** Jump the playhead (double/triple tap on a clip, tap on a trim handle). */
+        fun onSeekTo(us: Long)
     }
 
     data class VBlock(val startUs: Long, val durUs: Long, val key: String, val isImage: Boolean, val transition: Transition, val hasText: Boolean)
@@ -124,6 +126,13 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
     }
 
     /** External position updates (playback). Ignored while the user is touching. */
+    /** Programmatic jump (always applied). */
+    fun jumpTo(us: Long) {
+        if (!scroller.isFinished) { scroller.forceFinished(true); flinging = false }
+        positionUs = us.coerceIn(0, totalUs)
+        invalidate()
+    }
+
     fun setPosition(us: Long) {
         if (isUserScrubbing || flinging || dragAudio >= 0) return
         positionUs = us.coerceIn(0, totalUs)
@@ -334,6 +343,8 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
     private val gestures = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
         override fun onDown(e: MotionEvent): Boolean {
             if (!scroller.isFinished) { scroller.forceFinished(true); flinging = false }
+            rawUs = positionUs
+            snappedTo = Long.MIN_VALUE
             return true
         }
 
@@ -342,7 +353,8 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
             if (!isUserScrubbing && abs(distanceY) > abs(distanceX)) return false // let the panel scroll vertically
             parent?.requestDisallowInterceptTouchEvent(true)
             isUserScrubbing = true
-            moveTo(positionUs + (distanceX / pxPerSec * 1_000_000f).toLong())
+            rawUs = (rawUs + (distanceX / pxPerSec * 1_000_000f).toLong()).coerceIn(0, totalUs)
+            moveTo(snap(rawUs))
             return true
         }
 
@@ -373,6 +385,40 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
             }
         }
     })
+
+    // ---------- Magnetic snapping ----------
+    private var rawUs = 0L
+    private var snappedTo = Long.MIN_VALUE
+
+    /** Edges the playhead sticks to: clip starts/ends, audio starts/ends, project start/end. */
+    private fun snapTargets(): List<Long> {
+        val t = ArrayList<Long>()
+        t += 0L; t += totalUs
+        blocks.forEach { t += it.startUs; t += it.startUs + it.durUs }
+        audios.forEach { t += it.startUs; t += it.startUs + it.durUs }
+        return t
+    }
+
+    private fun snap(us: Long): Long {
+        val tol = (10 * d / pxPerSec * 1_000_000f).toLong()
+        val target = snapTargets().minByOrNull { abs(it - us) }
+        return if (target != null && abs(target - us) <= tol) {
+            if (snappedTo != target) { snappedTo = target; performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK) }
+            target
+        } else { snappedTo = Long.MIN_VALUE; us }
+    }
+
+    // ---------- Multi-tap on clips ----------
+    private var lastTapAt = 0L
+    private var lastTapKey = ""
+    private var tapCount = 0
+
+    private fun countTap(key: String): Int {
+        val now = android.os.SystemClock.uptimeMillis()
+        tapCount = if (key == lastTapKey && now - lastTapAt < 380) tapCount + 1 else 1
+        lastTapAt = now; lastTapKey = key
+        return tapCount
+    }
 
     private fun moveTo(us: Long) {
         positionUs = us.coerceIn(0, totalUs)
@@ -413,9 +459,17 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     val kind = trimKind; val delta = trimDeltaUs
                     trimKind = 0; trimDeltaUs = 0
-                    if (abs(delta) > 20_000) {
+                    val moved = abs(event.x - trimDownX) > 8 * d
+                    if (moved && abs(delta) > 20_000) {
                         if (kind == 1) listener?.onClipTrim(selectedClip, trimEdge, delta)
                         else listener?.onAudioTrim(selectedAudio, trimEdge, delta)
+                    } else if (!moved && event.actionMasked == MotionEvent.ACTION_UP) {
+                        // Tap on a handle: jump the playhead to that edge.
+                        val (start, len) = if (kind == 1) blocks[selectedClip].let { it.startUs to it.durUs }
+                        else audios[selectedAudio].let { it.startUs to it.durUs }
+                        val target = if (trimEdge == 0) start else (start + len - 33_000).coerceAtLeast(start)
+                        performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+                        listener?.onSeekTo(target)
                     }
                     invalidate()
                 }
@@ -465,11 +519,27 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
         if (py in videoTop..(videoTop + videoH)) {
             for (i in blocks.indices.reversed()) {
                 val b = blocks[i]
-                if (px >= x(b.startUs) && px <= x(b.startUs + b.durUs)) { l.onClipTap(i); return }
+                if (px >= x(b.startUs) && px <= x(b.startUs + b.durUs)) {
+                    // 1 tap: select • 2 taps: jump to clip start • 3 taps: jump to clip end
+                    when (countTap("c$i")) {
+                        1 -> l.onClipTap(i)
+                        2 -> l.onSeekTo(b.startUs)
+                        else -> l.onSeekTo((b.startUs + b.durUs - 33_000).coerceAtLeast(b.startUs))
+                    }
+                    return
+                }
             }
         }
         val a = audioAt(px, py)
-        if (a >= 0) { l.onAudioTap(a); return }
+        if (a >= 0) {
+            val ab = audios[a]
+            when (countTap("a$a")) {
+                1 -> l.onAudioTap(a)
+                2 -> l.onSeekTo(ab.startUs)
+                else -> l.onSeekTo((ab.startUs + ab.durUs - 33_000).coerceAtLeast(ab.startUs))
+            }
+            return
+        }
         l.onEmptyTap()
     }
 }

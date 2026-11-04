@@ -204,6 +204,69 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
 
     private var detector: android.view.GestureDetector? = null
 
+    // Two-finger framing of the selected clip on the preview
+    private var pinching = false
+    private var pinchScale = 1f
+    private var pinchFx = 0f; private var pinchFy = 0f
+    private var pinchDx = 0f; private var pinchDy = 0f
+
+    private fun commitPinch() {
+        if (!pinching) return
+        pinching = false
+        val c = project.clips.getOrNull(selClip)
+        val content = contentFrame()
+        if (c != null && content != null && content.width > 0) {
+            val w = content.width * content.scaleX; val h = content.height * content.scaleY
+            edit {
+                c.zoom = (c.zoom * pinchScale).coerceIn(0.3f, 5f)
+                c.offX = (c.offX + pinchDx / w).coerceIn(-1.5f, 1.5f)
+                c.offY = (c.offY + pinchDy / h).coerceIn(-1.5f, 1.5f)
+            }
+            chip(L.t("الإطار: ", "Frame: ") + "${(c.zoom * 100).toInt()}%")
+        }
+        pinchScale = 1f; pinchDx = 0f; pinchDy = 0f
+        applyPreviewTransform()
+    }
+
+    // Hold to play at 2x (full screen)
+    private var fastForward = false
+    private var ffJob: Job? = null
+
+    private fun startFastForward() {
+        val p = player ?: return
+        fastForward = true
+        b.speedBadge.visibility = View.VISIBLE
+        b.speedBadge.alpha = 0f
+        b.speedBadge.animate().alpha(1f).setDuration(120).start()
+        performHaptic()
+        if (p.isCommandAvailable(Player.COMMAND_SET_SPEED_AND_PITCH)) {
+            p.setPlaybackSpeed(2f)
+            if (!p.isPlaying) p.play()
+        } else {
+            // Fallback: play and keep skipping ahead so time advances at 2x.
+            if (!p.isPlaying) p.play()
+            ffJob = lifecycleScope.launch {
+                while (fastForward) {
+                    kotlinx.coroutines.delay(250)
+                    val pp = player ?: break
+                    val next = pp.currentPosition + 250
+                    if (next * 1000 >= project.durationUs) break
+                    pp.seekTo(next)
+                }
+            }
+        }
+    }
+
+    private fun stopFastForward() {
+        if (!fastForward) return
+        fastForward = false
+        ffJob?.cancel(); ffJob = null
+        player?.let { if (it.isCommandAvailable(Player.COMMAND_SET_SPEED_AND_PITCH)) it.setPlaybackSpeed(1f) }
+        b.speedBadge.animate().alpha(0f).setDuration(150).withEndAction { b.speedBadge.visibility = View.GONE }.start()
+    }
+
+    private fun performHaptic() = b.root.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+
     /** Visible height of the editor panel (it slides over the preview). */
     private var panelV = 0f
 
@@ -257,9 +320,10 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         content.pivotX = cw / 2f
         content.pivotY = 0f
         val sc = s0 + (s1 - s0) * t
-        content.scaleX = sc; content.scaleY = sc
-        content.translationX = tx1 * t
-        content.translationY = ty0 + (ty1 - ty0) * t
+        val ps = if (pinching) pinchScale else 1f
+        content.scaleX = sc * ps; content.scaleY = sc * ps
+        content.translationX = tx1 * t + (if (pinching) pinchDx else 0f)
+        content.translationY = ty0 + (ty1 - ty0) * t + (if (pinching) pinchDy else 0f)
     }
 
     @android.annotation.SuppressLint("ClickableViewAccessibility")
@@ -296,19 +360,39 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
             }
             override fun onDoubleTap(e: android.view.MotionEvent): Boolean { setFullscreen(!fullscreen); return true }
             override fun onScroll(e1: android.view.MotionEvent?, e2: android.view.MotionEvent, dx: Float, dy: Float): Boolean {
-                if (fullscreen || e1 == null) return false
+                if (fullscreen || e1 == null || e2.pointerCount > 1 || pinching) return false
                 setPanel(startV - (e2.rawY - e1.rawY))
                 return true
             }
+            override fun onLongPress(e: android.view.MotionEvent) {
+                if (fullscreen) startFastForward()
+            }
         })
-        b.root.setOnTouchListener { _, e -> if (fullscreen) detector?.onTouchEvent(e); fullscreen }
-        b.playerView.setOnTouchListener { _, e ->
+        val pinch = android.view.ScaleGestureDetector(this, object : android.view.ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScaleBegin(d: android.view.ScaleGestureDetector): Boolean {
+                if (fullscreen || selClip < 0) return false
+                pinching = true; pinchScale = 1f; pinchFx = d.focusX; pinchFy = d.focusY; pinchDx = 0f; pinchDy = 0f
+                return true
+            }
+            override fun onScale(d: android.view.ScaleGestureDetector): Boolean {
+                pinchScale = (pinchScale * d.scaleFactor).coerceIn(0.3f, 5f)
+                pinchDx = d.focusX - pinchFx; pinchDy = d.focusY - pinchFy
+                applyPreviewTransform()
+                return true
+            }
+            override fun onScaleEnd(d: android.view.ScaleGestureDetector) { commitPinch() }
+        })
+        val touch = View.OnTouchListener { _, e ->
+            pinch.onTouchEvent(e)
             detector?.onTouchEvent(e)
-            if ((e.actionMasked == android.view.MotionEvent.ACTION_UP || e.actionMasked == android.view.MotionEvent.ACTION_CANCEL) && !fullscreen) {
-                setPanel(panelV, settle = true)
+            if (e.actionMasked == android.view.MotionEvent.ACTION_UP || e.actionMasked == android.view.MotionEvent.ACTION_CANCEL) {
+                stopFastForward()
+                if (!fullscreen) setPanel(panelV, settle = true)
             }
             true
         }
+        b.root.setOnTouchListener { v, e -> if (fullscreen) touch.onTouch(v, e) else false }
+        b.playerView.setOnTouchListener(touch)
     }
 
     /** Smooth, GPU-only zoom into / out of full screen (no relayout, so the video never stutters). */
@@ -663,6 +747,13 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
 
     override fun onAddTap() = launchMediaPicker()
 
+    override fun onSeekTo(us: Long) {
+        player?.pause()
+        b.timeline.jumpTo(us)
+        seekPlayer(us)
+        updateTime()
+    }
+
     override fun onClipTrim(index: Int, edge: Int, deltaUs: Long) {
         val c = project.clips.getOrNull(index) ?: return
         chip(L.t("تم القص", "Trimmed"))
@@ -763,6 +854,10 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
                 tool(R.drawable.i_rotate, L.t("تدوير", "Rotate")) { edit { clip.rotation = (clip.rotation + 90) % 360 }; chip(L.t("تم التدوير", "Rotated")) }
                 tool(R.drawable.i_flip, L.t("قلب", "Flip")) { edit { clip.mirror = !clip.mirror }; chip(L.t("تم القلب", "Flipped")) }
                 tool(R.drawable.i_fit, if (clip.fill) L.t("احتواء", "Fit") else L.t("ملء الشاشة", "Fill")) { edit { clip.fill = !clip.fill } }
+                tool(R.drawable.i_ratio, L.t("الإطار والخلفية", "Frame & canvas"), accent = true) { frameSheet(clip) }
+                if (clip.type == ClipType.VIDEO) tool(R.drawable.i_timer, L.t("تجميد إطار", "Freeze frame")) { freezeFrame() }
+                tool(R.drawable.i_copy, L.t("نسخ التعديلات", "Copy edits")) { copyEdits(clip) }
+                if (copiedEdits != null) tool(R.drawable.i_check, L.t("لصق التعديلات", "Paste edits")) { pasteEdits(listOf(clip)) }
                 tool(R.drawable.i_left, L.t("تحريك", "Move")) { moveClip(-1) }
                 tool(R.drawable.i_right, L.t("تحريك", "Move")) { moveClip(1) }
                 tool(R.drawable.i_copy, L.t("تكرار", "Duplicate")) { duplicateClip(); chip(L.t("تم تكرار المقطع", "Clip duplicated")) }
@@ -784,6 +879,7 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
                 b.toolsTitle.text = L.t("الصوت", "Audio")
                 tool(R.drawable.i_back_arrow, L.t("رجوع", "Back")) { category = ""; buildTools() }
                 tool(R.drawable.i_music, L.t("من الجهاز", "From device"), accent = true) { pickAudio.launch(arrayOf("audio/*")) }
+                tool(R.drawable.i_volume, L.t("تسجيل صوت", "Voiceover")) { startVoiceover() }
                 tool(R.drawable.i_wave, L.t("استخراج الصوت", "Extract audio")) {
                     val i = clipUnderPlayhead(); category = ""
                     if (i >= 0) extractAudio(project.clips[i]) else buildTools()
@@ -828,6 +924,10 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         sheet.option(R.drawable.i_ratio, L.t("نسبة الأبعاد", "Aspect ratio"), project.aspect.label, false) { sheet.dismiss(); aspectSheet() }
         if (project.clips.size > 1) sheet.option(R.drawable.i_sparkles, L.t("انتقال لكل المقاطع", "Transition for all clips"), L.t("طبّق نفس الانتقال على الكل", "Apply one transition everywhere"), false) { sheet.dismiss(); showTransition(-1) }
         sheet.option(R.drawable.i_send, L.t("تصدير تيك توك HD", "TikTok HD export"), "1080×1920 • H.264", false) { sheet.dismiss(); showExportWith(true) }
+        sheet.option(R.drawable.i_export, L.t("حفظ الإطار الحالي كصورة", "Save current frame as photo"), L.t("يحفظ في الاستديو بجودة المعاينة", "Saved to gallery at preview quality"), false) { sheet.dismiss(); saveFrame() }
+        if (copiedEdits != null && project.clips.isNotEmpty()) sheet.option(R.drawable.i_check, L.t("لصق التعديلات على كل المقاطع", "Paste edits to all clips"), "", false) {
+            sheet.dismiss(); pasteEdits(project.clips.toList())
+        }
         val qs = listOf(540, 720, 1080)
         sheet.chips(L.t("جودة المعاينة (الأقل = أنعم)", "Preview quality (lower = smoother)"),
             listOf(L.t("سلسة 540p", "Smooth 540p"), "720p", "1080p"), qs.indexOf(previewShort).coerceAtLeast(0)) { i ->
@@ -1465,6 +1565,183 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
                 SyncPrefs.setLastSync(app, System.currentTimeMillis())
             }
         }
+    }
+
+    // ---------- Frame & canvas ----------
+
+    private fun frameSheet(c: Clip) {
+        val sheet = Sheet(this, L.t("الإطار والخلفية", "Frame & canvas"), L.t("💡 تقدر تكبّر وتحرك المقطع بإصبعين على المعاينة", "💡 Pinch and drag with two fingers on the preview"))
+        val pct: (Float) -> String = { "${(it * 100).toInt()}%" }
+        sheet.slider(L.t("التكبير", "Zoom"), 0.3f, 3f, c.zoom, pct, 0.01f) { v -> edit { c.zoom = v } }
+        sheet.slider(L.t("أفقي", "Horizontal"), -1f, 1f, c.offX, pct, 0.01f) { v -> edit { c.offX = v } }
+        sheet.slider(L.t("عمودي", "Vertical"), -1f, 1f, c.offY, pct, 0.01f) { v -> edit { c.offY = v } }
+        val bgs = listOf("" to L.t("أسود", "Black"), "blur" to L.t("ضبابي ✨", "Blur ✨"), "#FFFFFF" to L.t("أبيض", "White"),
+            "#F26B2A" to L.t("برتقالي", "Orange"), "#1E3A8A" to L.t("أزرق", "Blue"), "#14532D" to L.t("أخضر", "Green"), "#FBCFE8" to L.t("وردي", "Pink"))
+        sheet.chips(L.t("خلفية الإطار (للمساحة الفاضية)", "Canvas background (empty area)"), bgs.map { it.second }, bgs.indexOfFirst { it.first == c.canvasBg }.coerceAtLeast(0)) { i ->
+            edit { c.canvasBg = bgs[i].first }
+        }
+        sheet.note(L.t("💡 «ضبابي» يملأ الحواف بنسخة ضبابية من نفس المقطع — ممتاز لمقاطع 16:9 على تيك توك.", "💡 “Blur” fills the bars with a blurred copy of the clip — great for 16:9 videos on TikTok."))
+        sheet.button(L.t("تطبيق الخلفية على كل المقاطع", "Apply background to all clips"), outlined = true) {
+            edit { project.clips.forEach { it.canvasBg = c.canvasBg } }; sheet.dismiss(); chip(L.t("تم تطبيق الخلفية", "Background applied"))
+        }
+        sheet.button(L.t("إعادة ضبط الإطار", "Reset frame"), outlined = true) {
+            edit { c.zoom = 1f; c.offX = 0f; c.offY = 0f }; sheet.dismiss()
+        }
+        sheet.show()
+    }
+
+    // ---------- Freeze frame ----------
+
+    private fun freezeFrame() {
+        val pos = b.timeline.positionUs
+        val i = project.clipAt(pos)
+        val c = project.clips.getOrNull(i)?.takeIf { it.type == ClipType.VIDEO } ?: return
+        val rel = (pos - project.clipStartUs(i)).coerceIn(0, c.timelineUs - 1)
+        val srcUs = c.trimStartUs + (rel * c.speed).toLong()
+        val (dialog, _) = busyDialog(L.t("جاري تجميد الإطار…", "Freezing frame…"))
+        lifecycleScope.launch {
+            val name = newId() + ".png"
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    val r = MediaMetadataRetriever()
+                    val bm = try { r.setDataSource(store.mediaFile(project.id, c.file).absolutePath); r.getFrameAtTime(srcUs, MediaMetadataRetriever.OPTION_CLOSEST) } finally { r.release() }
+                    bm!!.let { b2 -> store.mediaFile(project.id, name).outputStream().use { b2.compress(Bitmap.CompressFormat.PNG, 100, it) }; b2.width to b2.height }
+                }.getOrNull()
+            }
+            dialog.dismiss()
+            if (ok == null) return@launch toast(L.t("تعذّر أخذ الإطار", "Couldn't grab the frame"))
+            edit {
+                val img = Clip(file = name, type = ClipType.IMAGE, sourceDurationUs = 2_000_000, srcW = ok.first, srcH = ok.second,
+                    rotation = c.rotation, mirror = c.mirror, fill = c.fill, brightness = c.brightness, contrast = c.contrast,
+                    saturation = c.saturation, grade = c.grade, gradeAmount = c.gradeAmount, temperature = c.temperature, tint = c.tint,
+                    canvasBg = c.canvasBg, zoom = c.zoom, offX = c.offX, offY = c.offY)
+                if (rel < 100_000) project.clips.add(i, img)
+                else if (c.timelineUs - rel < 100_000) project.clips.add(i + 1, img)
+                else {
+                    val cut = c.trimStartUs + (rel * c.speed).toLong()
+                    val second = c.copy(fx = c.fx.copy(), id = newId(), trimStartUs = cut)
+                    c.trimEndUs = cut; c.transition = Transition.NONE
+                    project.clips.add(i + 1, img); project.clips.add(i + 2, second)
+                }
+            }
+            chip(L.t("تم تجميد الإطار (2ث)", "Frame frozen (2s)"))
+        }
+    }
+
+    // ---------- Copy / paste edits ----------
+
+    private var copiedEdits: Clip? = null
+
+    private fun copyEdits(c: Clip) {
+        copiedEdits = c.copy(fx = c.fx.copy())
+        buildTools()
+        chip(L.t("تم نسخ التعديلات", "Edits copied"))
+    }
+
+    private fun pasteEdits(targets: List<Clip>) {
+        val s = copiedEdits ?: return
+        edit {
+            targets.forEach { t ->
+                t.grade = s.grade; t.gradeAmount = s.gradeAmount; t.temperature = s.temperature; t.tint = s.tint
+                t.brightness = s.brightness; t.contrast = s.contrast; t.saturation = s.saturation; t.sharpen = s.sharpen
+                t.animIn = s.animIn; t.animOut = s.animOut; t.animLoop = s.animLoop
+                t.fill = s.fill; t.canvasBg = s.canvasBg; t.zoom = s.zoom; t.offX = s.offX; t.offY = s.offY
+                t.textPos = s.textPos; t.textColor = s.textColor; t.textScale = s.textScale; t.textFont = s.textFont
+                if (t.type == ClipType.VIDEO) { t.volume = s.volume; t.fx = s.fx.copy() }
+            }
+        }
+        chip(L.t("تم لصق التعديلات على ${targets.size}", "Edits pasted to ${targets.size}"))
+    }
+
+    // ---------- Voiceover ----------
+
+    private val micPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        if (ok) startVoiceover() else toast(L.t("نحتاج إذن الميكروفون للتسجيل", "Microphone permission is needed"))
+    }
+
+    private fun startVoiceover() {
+        if (project.clips.isEmpty()) return toast(L.t("أضف مقطع أول", "Add a clip first"))
+        if (androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            micPermission.launch(android.Manifest.permission.RECORD_AUDIO); return
+        }
+        val startAt = b.timeline.positionUs
+        val name = newId() + ".m4a"
+        val file = store.mediaFile(project.id, name)
+        val rec = (if (android.os.Build.VERSION.SDK_INT >= 31) android.media.MediaRecorder(this) else @Suppress("DEPRECATION") android.media.MediaRecorder()).apply {
+            setAudioSource(android.media.MediaRecorder.AudioSource.MIC)
+            setOutputFormat(android.media.MediaRecorder.OutputFormat.MPEG_4)
+            setAudioEncoder(android.media.MediaRecorder.AudioEncoder.AAC)
+            setAudioSamplingRate(48000)
+            setAudioEncodingBitRate(192_000)
+            setOutputFile(file.absolutePath)
+        }
+        val sheet = Sheet(this, L.t("🎙 تسجيل تعليق صوتي", "🎙 Voiceover"), L.t("المقطع يشتغل بدون صوت عشان تتكلم عليه بالتزامن", "The video plays muted so you can narrate in sync"))
+        val timer = sheet.text("00:00")
+        timer.textSize = 28f
+        var recording = false
+        val started = System.currentTimeMillis()
+        val tick = object : Runnable {
+            override fun run() {
+                if (!recording) return
+                val s = (System.currentTimeMillis() - started) / 1000
+                timer.text = String.format(Locale.US, "🔴 %02d:%02d", s / 60, s % 60)
+                handler.postDelayed(this, 250)
+            }
+        }
+        fun stop(save: Boolean) {
+            if (!recording) return
+            recording = false
+            runCatching { rec.stop() }
+            rec.release()
+            player?.pause(); player?.volume = if (muted) 0f else 1f
+            if (!save) { file.delete(); return }
+            val dur = runCatching {
+                val r = MediaMetadataRetriever()
+                try { r.setDataSource(file.absolutePath); (r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong() ?: 0) * 1000 } finally { r.release() }
+            }.getOrDefault(0L)
+            if (dur < 300_000) { file.delete(); toast(L.t("التسجيل قصير جداً", "Recording too short")); return }
+            edit {
+                project.audios += AudioClip(file = name, label = L.t("تعليق صوتي", "Voiceover"), sourceDurationUs = dur, startAtUs = startAt)
+                selAudio = project.audios.lastIndex; selClip = -1
+            }
+            chip(L.t("تمت إضافة التعليق الصوتي", "Voiceover added"))
+        }
+        sheet.button(L.t("⏹ إيقاف وحفظ", "⏹ Stop & save")) { stop(true); sheet.dismiss() }
+        sheet.button(L.t("إلغاء", "Cancel"), outlined = true) { stop(false); sheet.dismiss() }
+        sheet.dialog.setOnDismissListener { stop(true) }
+        try {
+            rec.prepare(); rec.start()
+            recording = true
+            handler.post(tick)
+            player?.let { it.volume = 0f; seekPlayer(startAt); it.play() }
+            sheet.show()
+        } catch (e: Exception) {
+            rec.release(); file.delete()
+            toast(L.t("تعذّر بدء التسجيل: ", "Couldn't start recording: ") + e.message)
+        }
+    }
+
+    // ---------- Save frame ----------
+
+    private fun saveFrame() {
+        val sv = b.playerView.videoSurfaceView as? android.view.SurfaceView ?: return toast(L.t("ما فيه إطار", "No frame"))
+        if (sv.width <= 0) return
+        val bm = Bitmap.createBitmap(sv.width, sv.height, Bitmap.Config.ARGB_8888)
+        android.view.PixelCopy.request(sv, bm, { result ->
+            if (result != android.view.PixelCopy.SUCCESS) { toast(L.t("تعذّر حفظ الإطار", "Couldn't save the frame")); return@request }
+            lifecycleScope.launch(Dispatchers.IO) {
+                val values = android.content.ContentValues().apply {
+                    put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, "MawjFrame_" + System.currentTimeMillis() + ".png")
+                    put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png")
+                    put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, android.os.Environment.DIRECTORY_PICTURES + "/Mawj Edit")
+                }
+                val ok = runCatching {
+                    val uri = contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)!!
+                    contentResolver.openOutputStream(uri)!!.use { bm.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                }.isSuccess
+                withContext(Dispatchers.Main) { chip(if (ok) L.t("تم حفظ الإطار في الاستديو", "Frame saved to gallery") else L.t("تعذّر الحفظ", "Couldn't save")) }
+            }
+        }, handler)
     }
 
     // ---------- Export ----------

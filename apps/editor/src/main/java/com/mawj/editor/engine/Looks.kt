@@ -231,3 +231,115 @@ void main() {
 """
     }
 }
+
+/**
+ * Places a clip on the canvas in one GPU pass: fit (or fill) + manual zoom/offset for the clip, and the empty
+ * area filled with black, a solid color, or a blurred, zoomed copy of the clip itself (TikTok-style).
+ */
+@OptIn(UnstableApi::class)
+class CanvasEffect(
+    private val outW: Int, private val outH: Int,
+    private val fill: Boolean, private val zoom: Float, private val offX: Float, private val offY: Float,
+    private val bg: String,
+) : GlEffect {
+    override fun toGlShaderProgram(context: Context, useHdr: Boolean): GlShaderProgram =
+        CanvasProgram(outW, outH, fill, zoom, offX, offY, bg, useHdr)
+}
+
+@OptIn(UnstableApi::class)
+private class CanvasProgram(
+    private val outW: Int, private val outH: Int,
+    private val fill: Boolean, private val zoom: Float, private val offX: Float, private val offY: Float,
+    bg: String, useHdr: Boolean,
+) : BaseGlShaderProgram(useHdr, 1) {
+
+    private val mode = when { bg == "blur" -> 2f; bg.startsWith("#") -> 1f; else -> 0f }
+    private val color: FloatArray = if (bg.startsWith("#")) {
+        val c = android.graphics.Color.parseColor(bg)
+        floatArrayOf(android.graphics.Color.red(c) / 255f, android.graphics.Color.green(c) / 255f, android.graphics.Color.blue(c) / 255f)
+    } else floatArrayOf(0f, 0f, 0f)
+
+    private val program = GlProgram(SharpenProgramShaders.VERTEX, FRAGMENT).apply {
+        setBufferAttribute("aFramePosition", GlUtil.getNormalizedCoordinateBounds(), GlUtil.HOMOGENEOUS_COORDINATE_VECTOR_SIZE)
+        setFloatsUniform("uTransformationMatrix", GlUtil.create4x4IdentityMatrix())
+        setFloatsUniform("uTexTransformationMatrix", GlUtil.create4x4IdentityMatrix())
+    }
+
+    override fun configure(inputWidth: Int, inputHeight: Int): Size {
+        val ow = outW.toFloat(); val oh = outH.toFloat()
+        val iw = inputWidth.toFloat(); val ih = inputHeight.toFloat()
+        val s = (if (fill) maxOf(ow / iw, oh / ih) else minOf(ow / iw, oh / ih)) * zoom
+        // Foreground rectangle in output UV space (0..1), y up.
+        val fw = iw * s / ow; val fh = ih * s / oh
+        val cx = 0.5f + offX; val cy = 0.5f - offY
+        program.setFloatsUniform("uFg", floatArrayOf(cx - fw / 2, cy - fh / 2, fw, fh))
+        // Background: fill-crop of the input, slightly enlarged.
+        val sb = maxOf(ow / iw, oh / ih) * 1.08f
+        val bw = iw * sb / ow; val bh = ih * sb / oh
+        program.setFloatsUniform("uBg", floatArrayOf(0.5f - bw / 2, 0.5f - bh / 2, bw, bh))
+        program.setFloatUniform("uMode", mode)
+        program.setFloatsUniform("uColor", color)
+        program.setFloatsUniform("uTexel", floatArrayOf(1f / iw, 1f / ih))
+        return Size(outW, outH)
+    }
+
+    override fun drawFrame(inputTexId: Int, presentationTimeUs: Long) {
+        program.use()
+        program.setSamplerTexIdUniform("uTexSampler", inputTexId, 0)
+        program.bindAttributesAndUniforms()
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+    }
+
+    override fun release() {
+        super.release()
+        program.delete()
+    }
+
+    companion object {
+        const val FRAGMENT = """
+precision mediump float;
+uniform sampler2D uTexSampler;
+uniform vec4 uFg;
+uniform vec4 uBg;
+uniform float uMode;
+uniform vec3 uColor;
+uniform vec2 uTexel;
+varying vec2 vTexSamplingCoord;
+void main() {
+  vec2 uv = vTexSamplingCoord;
+  vec2 f = (uv - uFg.xy) / uFg.zw;
+  if (f.x >= 0.0 && f.x <= 1.0 && f.y >= 0.0 && f.y <= 1.0) {
+    gl_FragColor = texture2D(uTexSampler, f);
+    return;
+  }
+  if (uMode < 0.5) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+  if (uMode < 1.5) { gl_FragColor = vec4(uColor, 1.0); return; }
+  vec2 b = clamp((uv - uBg.xy) / uBg.zw, 0.0, 1.0);
+  vec3 acc = vec3(0.0);
+  float r = 0.045;
+  for (int i = -2; i <= 2; i++) {
+    for (int j = -2; j <= 2; j++) {
+      vec2 o = vec2(float(i), float(j)) * r * 0.5;
+      acc += texture2D(uTexSampler, clamp(b + o, 0.0, 1.0)).rgb;
+    }
+  }
+  gl_FragColor = vec4(acc / 25.0 * 0.62, 1.0);
+}
+"""
+    }
+}
+
+/** Shared vertex shader. */
+internal object SharpenProgramShaders {
+    const val VERTEX = """
+attribute vec4 aFramePosition;
+uniform mat4 uTransformationMatrix;
+uniform mat4 uTexTransformationMatrix;
+varying vec2 vTexSamplingCoord;
+void main() {
+  gl_Position = uTransformationMatrix * aFramePosition;
+  vec4 texturePosition = vec4(aFramePosition.x * 0.5 + 0.5, aFramePosition.y * 0.5 + 0.5, 0.0, 1.0);
+  vTexSamplingCoord = (uTexTransformationMatrix * texturePosition).xy;
+}
+"""
+}

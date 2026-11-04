@@ -319,6 +319,25 @@
     </LinearLayout>
 </LinearLayout>
 
+    <!-- Hold-to-2x badge -->
+    <TextView
+        android:id="@+id/speedBadge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="28dp"
+        android:background="@drawable/pill_dark"
+        android:backgroundTint="#CC000000"
+        android:paddingStart="16dp"
+        android:paddingTop="6dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="6dp"
+        android:text="2x  ▶▶"
+        android:textColor="#FFFFFFFF"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
     <!-- Full screen overlay controls -->
     <LinearLayout
         android:id="@+id/fullControls"

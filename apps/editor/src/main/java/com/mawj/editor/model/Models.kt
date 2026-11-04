@@ -144,7 +144,15 @@ data class Clip(
     var srcH: Int = 0,
     /** Audio processing for the clip's own sound. */
     var fx: AudioFx = AudioFx(),
+    /** Canvas background around the clip: "" black, "blur", or "#RRGGBB". */
+    var canvasBg: String = "",
+    /** Manual framing inside the canvas: zoom (1 = fit) and offset (fraction of the canvas). */
+    var zoom: Float = 1f,
+    var offX: Float = 0f,
+    var offY: Float = 0f,
 ) {
+    val framed get() = canvasBg.isNotEmpty() || kotlin.math.abs(zoom - 1f) > 0.001f || offX != 0f || offY != 0f
+
     /** Duration of this clip on the output timeline. */
     val timelineUs: Long get() = ((trimEndUs - trimStartUs) / speed).toLong().coerceAtLeast(1)
 
@@ -159,6 +167,7 @@ data class Clip(
         put("grade", grade); put("gamt", gradeAmount.toDouble()); put("temp", temperature.toDouble()); put("tint", tint.toDouble())
         put("sharp", sharpen.toDouble()); put("ain", animIn); put("aout", animOut); put("aloop", animLoop)
         put("fx", focusX.toDouble()); put("fy", focusY.toDouble()); put("sw", srcW); put("sh", srcH); put("afx", fx.toJson())
+        put("cbg", canvasBg); put("zm", zoom.toDouble()); put("ox", offX.toDouble()); put("oy", offY.toDouble())
     }
 
     companion object {
@@ -199,6 +208,10 @@ data class Clip(
                 srcW = o.optInt("sw", 0),
                 srcH = o.optInt("sh", 0),
                 fx = AudioFx.fromJson(o.optJSONObject("afx")),
+                canvasBg = o.optString("cbg", ""),
+                zoom = o.optDouble("zm", 1.0).toFloat(),
+                offX = o.optDouble("ox", 0.0).toFloat(),
+                offY = o.optDouble("oy", 0.0).toFloat(),
             )
         }
     }

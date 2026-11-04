@@ -64,7 +64,7 @@ class EngineTest {
         out
     }
 
-    private fun makeProject(transition: Transition): String {
+    private fun makeProject(transition: Transition, pro: Boolean = false): String {
         val app = ctx.applicationContext as MawjApp
         val store = app.store
         val p = store.create("test")
@@ -76,6 +76,11 @@ class EngineTest {
         }
         p.clips[0].transition = transition
         p.clips[0].transitionUs = 800_000
+        if (pro) {
+            p.clips[0].canvasBg = "blur"; p.clips[0].grade = "teal"; p.clips[0].sharpen = 0.3f; p.clips[0].animLoop = "kenburns"
+            p.clips[1].zoom = 1.3f; p.clips[1].offX = 0.1f; p.clips[1].canvasBg = "#F26B2A"
+            p.clips[1].fx = com.mawj.editor.model.AudioFx(pitch = 3f, eqLow = 4f, denoise = 0.5f, compress = 0.4f, reverb = 0.3f, voice = "radio")
+        }
         store.save(p)
         return p.id
     }
@@ -97,6 +102,37 @@ class EngineTest {
             Log.i(tag, "preview position before=$before after=$after")
             assertTrue("preview did not advance (before=$before after=$after)", after - before > 500_000)
         }
+    }
+
+    @Test
+    fun previewPlaysWithProEffects() {
+        val id = makeProject(Transition.NONE, pro = true)
+        val intent = Intent(ctx, EditorActivity::class.java).putExtra(EditorActivity.EXTRA_ID, id)
+        ActivityScenario.launch<EditorActivity>(intent).use { sc ->
+            Thread.sleep(6000)
+            sc.onActivity { a -> a.findViewById<android.view.View>(R.id.playButton).performClick() }
+            Thread.sleep(2500)
+            var after = 0L
+            sc.onActivity { a -> after = a.findViewById<TimelineView>(R.id.timeline).positionUs }
+            Log.i(tag, "pro preview position=$after")
+            assertTrue("pro preview did not advance (pos=$after)", after > 500_000)
+        }
+    }
+
+    @Test
+    fun exportWithProEffects() {
+        val id = makeProject(Transition.DISSOLVE, pro = true)
+        val store = (ctx.applicationContext as MawjApp).store
+        val p = store.load(id)
+        val out = File(ctx.cacheDir, "test_export_pro.mp4").apply { delete() }
+        val err = runCatching {
+            runBlocking(Dispatchers.Main) {
+                val comp = CompositionFactory.build(ctx, store, p, BuildOptions(720, 1280, true, sharpen = 0.2f))
+                MediaJobs.exportVideo(ctx, comp, 6_000_000, out) {}
+            }
+        }.exceptionOrNull()
+        Log.i(tag, "pro export size=${out.length()} err=$err")
+        assertTrue("pro export failed: ${err?.let { generateSequence(it) { c -> c.cause }.mapNotNull { c -> c.message }.joinToString(" <- ") }}", err == null && out.length() > 0)
     }
 
     @Test

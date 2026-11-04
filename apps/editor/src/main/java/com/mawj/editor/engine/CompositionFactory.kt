@@ -212,10 +212,14 @@ object CompositionFactory {
                 .build()
         }
         if (c.fill && c.focusX >= 0f && c.srcW > 0 && c.srcH > 0) reframeCrop(c, opt)?.let { videoFx += it }
-        videoFx += Presentation.createForWidthAndHeight(
-            opt.canvasW, opt.canvasH,
-            if (c.fill) Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP else Presentation.LAYOUT_SCALE_TO_FIT,
-        )
+        videoFx += if (c.framed && opt.enableEffects) {
+            CanvasEffect(opt.canvasW, opt.canvasH, c.fill, c.zoom, c.offX, c.offY, c.canvasBg)
+        } else {
+            Presentation.createForWidthAndHeight(
+                opt.canvasW, opt.canvasH,
+                if (c.fill) Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP else Presentation.LAYOUT_SCALE_TO_FIT,
+            )
+        }
         if (opt.enableEffects) {
             if (abs(c.brightness) > 0.01f) videoFx += Brightness(c.brightness.coerceIn(-1f, 1f))
             if (abs(c.contrast) > 0.01f) videoFx += Contrast(c.contrast.coerceIn(-1f, 1f))

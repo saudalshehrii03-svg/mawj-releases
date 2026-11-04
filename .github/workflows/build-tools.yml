@@ -59,7 +59,7 @@ jobs:
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD || 'mawjtools' }}
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon --stacktrace assembleRelease
+          ./gradlew --no-daemon --stacktrace :editor:testDebugUnitTest assembleRelease
 
       - name: Collect APKs
         run: |

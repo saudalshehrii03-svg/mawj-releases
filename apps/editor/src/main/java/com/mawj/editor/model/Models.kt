@@ -64,6 +64,42 @@ enum class TextPos(private val ar: String, private val en: String, val y: Float)
     val label: String get() = com.mawj.editor.L.t(ar, en)
 }
 
+/** Pro audio settings shared by clip audio and audio tracks. */
+data class AudioFx(
+    var pitch: Float = 0f,        // semitones -12..+12 (negative = heavier, positive = softer)
+    var voice: String = "",       // voice-changer preset id
+    var eqLow: Float = 0f,        // dB -12..+12 (bass / weight)
+    var eqMid: Float = 0f,        // dB (presence)
+    var eqHigh: Float = 0f,       // dB (treble / brightness)
+    var denoise: Float = 0f,      // 0..1
+    var isolate: Boolean = false, // voice isolation
+    var compress: Float = 0f,     // 0..1 leveler
+    var echo: Float = 0f,         // 0..1
+    var reverb: Float = 0f,       // 0..1
+    var fadeInUs: Long = 0,
+    var fadeOutUs: Long = 0,
+) {
+    /** Anything that needs the DSP chain (pitch handled separately). */
+    val dspActive get() = voice.isNotEmpty() || eqLow != 0f || eqMid != 0f || eqHigh != 0f || denoise > 0f ||
+        isolate || compress > 0f || echo > 0f || reverb > 0f
+
+    fun toJson() = JSONObject().apply {
+        put("p", pitch.toDouble()); put("v", voice); put("l", eqLow.toDouble()); put("m", eqMid.toDouble()); put("h", eqHigh.toDouble())
+        put("dn", denoise.toDouble()); put("iso", isolate); put("c", compress.toDouble()); put("e", echo.toDouble()); put("r", reverb.toDouble())
+        put("fi", fadeInUs); put("fo", fadeOutUs)
+    }
+
+    companion object {
+        fun fromJson(o: JSONObject?): AudioFx = if (o == null) AudioFx() else AudioFx(
+            pitch = o.optDouble("p", 0.0).toFloat(), voice = o.optString("v", ""),
+            eqLow = o.optDouble("l", 0.0).toFloat(), eqMid = o.optDouble("m", 0.0).toFloat(), eqHigh = o.optDouble("h", 0.0).toFloat(),
+            denoise = o.optDouble("dn", 0.0).toFloat(), isolate = o.optBoolean("iso", false), compress = o.optDouble("c", 0.0).toFloat(),
+            echo = o.optDouble("e", 0.0).toFloat(), reverb = o.optDouble("r", 0.0).toFloat(),
+            fadeInUs = o.optLong("fi", 0), fadeOutUs = o.optLong("fo", 0),
+        )
+    }
+}
+
 fun newId(): String = UUID.randomUUID().toString().substring(0, 12)
 
 data class Clip(
@@ -106,6 +142,8 @@ data class Clip(
     /** Display size of the source (after its own rotation metadata). */
     var srcW: Int = 0,
     var srcH: Int = 0,
+    /** Audio processing for the clip's own sound. */
+    var fx: AudioFx = AudioFx(),
 ) {
     /** Duration of this clip on the output timeline. */
     val timelineUs: Long get() = ((trimEndUs - trimStartUs) / speed).toLong().coerceAtLeast(1)
@@ -120,7 +158,7 @@ data class Clip(
         put("text", text); put("tpos", textPos.name); put("tcol", textColor); put("tsc", textScale.toDouble()); put("tfont", textFont)
         put("grade", grade); put("gamt", gradeAmount.toDouble()); put("temp", temperature.toDouble()); put("tint", tint.toDouble())
         put("sharp", sharpen.toDouble()); put("ain", animIn); put("aout", animOut); put("aloop", animLoop)
-        put("fx", focusX.toDouble()); put("fy", focusY.toDouble()); put("sw", srcW); put("sh", srcH)
+        put("fx", focusX.toDouble()); put("fy", focusY.toDouble()); put("sw", srcW); put("sh", srcH); put("afx", fx.toJson())
     }
 
     companion object {
@@ -160,6 +198,7 @@ data class Clip(
                 focusY = o.optDouble("fy", -1.0).toFloat(),
                 srcW = o.optInt("sw", 0),
                 srcH = o.optInt("sh", 0),
+                fx = AudioFx.fromJson(o.optJSONObject("afx")),
             )
         }
     }
@@ -178,14 +217,21 @@ data class AudioClip(
     var fadeOutUs: Long = 0,
     /** Detected beats, in source time (µs). */
     var beats: List<Long> = emptyList(),
+    /** Tempo (pitch preserved). */
+    var speed: Float = 1f,
+    var fx: AudioFx = AudioFx(),
 ) {
+    /** Used part of the source file. */
     val lengthUs: Long get() = (trimEndUs - trimStartUs).coerceAtLeast(1)
+    /** Length on the timeline (after speed). */
+    val timelineUs: Long get() = (lengthUs / speed).toLong().coerceAtLeast(1)
 
     fun toJson() = JSONObject().apply {
         put("id", id); put("file", file); put("label", label); put("src", sourceDurationUs)
         put("ts", trimStartUs); put("te", trimEndUs); put("at", startAtUs)
         put("vol", volume.toDouble()); put("fi", fadeInUs); put("fo", fadeOutUs)
         put("beats", JSONArray().apply { beats.forEach { put(it) } })
+        put("spd", speed.toDouble()); put("afx", fx.toJson())
     }
 
     companion object {
@@ -203,6 +249,8 @@ data class AudioClip(
                 fadeInUs = o.optLong("fi", 0),
                 fadeOutUs = o.optLong("fo", 0),
                 beats = o.optJSONArray("beats")?.let { a -> (0 until a.length()).map { a.getLong(it) } } ?: emptyList(),
+                speed = o.optDouble("spd", 1.0).toFloat(),
+                fx = AudioFx.fromJson(o.optJSONObject("afx")),
             )
         }
     }

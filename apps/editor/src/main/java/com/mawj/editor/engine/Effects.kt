@@ -196,3 +196,53 @@ class GainAudioProcessor(
     override fun onFlush() { frames = 0 }
     override fun onReset() { frames = 0 }
 }
+
+/** Runs the pro voice/EQ/cleanup chain ([VoiceDsp]) inside Media3's audio pipeline. */
+@OptIn(UnstableApi::class)
+class VoiceFxProcessor(private val fx: com.mawj.editor.model.AudioFx) : BaseAudioProcessor() {
+
+    private var dsp: VoiceDsp? = null
+    private var tmp = FloatArray(0)
+
+    override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
+        if (!fx.dspActive) return AudioProcessor.AudioFormat.NOT_SET
+        if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT && inputAudioFormat.encoding != C.ENCODING_PCM_FLOAT) {
+            throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
+        }
+        return inputAudioFormat
+    }
+
+    override fun queueInput(inputBuffer: ByteBuffer) {
+        val fmt = inputAudioFormat
+        val ch = fmt.channelCount.coerceAtLeast(1)
+        val isFloat = fmt.encoding == C.ENCODING_PCM_FLOAT
+        val bps = if (isFloat) 4 else 2
+        val frames = inputBuffer.remaining() / (ch * bps)
+        if (frames == 0) { inputBuffer.position(inputBuffer.limit()); return }
+        val d = dsp ?: VoiceDsp(fx, fmt.sampleRate, ch).also { dsp = it }
+        val n = frames * ch
+        if (tmp.size < n) tmp = FloatArray(n)
+        for (i in 0 until n) tmp[i] = if (isFloat) inputBuffer.float else inputBuffer.short / 32768f
+        while (inputBuffer.hasRemaining()) inputBuffer.get() // drop partial frame bytes
+        d.process(tmp, frames)
+        val out = replaceOutputBuffer(n * bps)
+        for (i in 0 until n) {
+            val v = tmp[i].coerceIn(-1f, 1f)
+            if (isFloat) out.putFloat(v) else out.putShort((v * 32767f).roundToInt().toShort())
+        }
+        out.flip()
+    }
+
+    override fun onFlush() { dsp = null }
+    override fun onReset() { dsp = null }
+}
+
+/** Pitch shift (semitones) and/or tempo change with preserved pitch. */
+@OptIn(UnstableApi::class)
+fun pitchSpeedProcessor(semitones: Float, speed: Float = 1f): AudioProcessor? {
+    if (kotlin.math.abs(semitones) < 0.05f && kotlin.math.abs(speed - 1f) < 0.01f) return null
+    return androidx.media3.common.audio.SonicAudioProcessor().apply {
+        setPitch(Math.pow(2.0, semitones / 12.0).toFloat())
+        setSpeed(speed)
+    }
+}

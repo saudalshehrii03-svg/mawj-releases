@@ -99,7 +99,8 @@ object CompositionFactory {
                 tailUs = if (next != null && tail != Transition.NONE) min(halfTransitionUs(c, next), mainDur / 2) else 0,
                 clock = ClipClock(mainStart, mainDur, opt.forExport),
             )
-            items += clipItem(context, store, project, c, opt, headOv, mainDur, plan, GainAudioProcessor(c.volume))
+            items += clipItem(context, store, project, c, opt, headOv, mainDur, plan,
+                GainAudioProcessor(c.volume, c.fx.fadeInUs, c.fx.fadeOutUs, mainDur))
 
             if (tailOv > 0 && next != null) {
                 val bridge = opt.bridges[i]
@@ -118,7 +119,7 @@ object CompositionFactory {
 
         for (a in project.audios) {
             val start = a.startAtUs.coerceIn(0, totalUs)
-            val len = min(a.lengthUs, totalUs - start)
+            val len = min(a.timelineUs, totalUs - start)
             if (len < 100_000) continue
             val seq = ArrayList<EditedMediaItem>()
             if (start > 20_000) {
@@ -131,12 +132,16 @@ object CompositionFactory {
                 .setClippingConfiguration(
                     MediaItem.ClippingConfiguration.Builder()
                         .setStartPositionMs(a.trimStartUs / 1000)
-                        .setEndPositionMs((a.trimStartUs + len) / 1000)
+                        .setEndPositionMs((a.trimStartUs + (len * a.speed).toLong()) / 1000)
                         .build()
                 ).build()
             seq += EditedMediaItem.Builder(item)
                 .setRemoveVideo(true)
-                .setEffects(Effects(listOf<AudioProcessor>(GainAudioProcessor(a.volume, a.fadeInUs, a.fadeOutUs, len)), emptyList()))
+                .setEffects(Effects(listOfNotNull(
+                    pitchSpeedProcessor(a.fx.pitch, a.speed),
+                    if (a.fx.dspActive) VoiceFxProcessor(a.fx) else null,
+                    GainAudioProcessor(a.volume, a.fadeInUs, a.fadeOutUs, len),
+                ), emptyList()))
                 .setDurationUs(a.sourceDurationUs)
                 .build()
             sequences += EditedMediaItemSequence(seq)
@@ -194,7 +199,11 @@ object CompositionFactory {
             audioFx += pair.first
             videoFx += pair.second
         }
-        if (c.type == ClipType.VIDEO) audioFx += gain
+        if (c.type == ClipType.VIDEO) {
+            pitchSpeedProcessor(c.fx.pitch)?.let { audioFx += it }
+            if (c.fx.dspActive) audioFx += VoiceFxProcessor(c.fx)
+            audioFx += gain
+        }
 
         if (opt.enableEffects && (c.rotation != 0 || c.mirror)) {
             videoFx += ScaleAndRotateTransformation.Builder()

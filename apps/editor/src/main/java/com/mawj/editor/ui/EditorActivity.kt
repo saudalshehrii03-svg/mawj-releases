@@ -419,8 +419,8 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
             TimelineView.VBlock(project.clipStartUs(i), it.timelineUs, thumbKey(it), it.type == ClipType.IMAGE, it.transition, it.text.isNotBlank())
         }
         val a = project.audios.map { au ->
-            TimelineView.ABlock(au.startAtUs, au.lengthUs, au.label).also { blk ->
-                blk.beats = au.beats.filter { it in au.trimStartUs..au.trimEndUs }.map { au.startAtUs + it - au.trimStartUs }
+            TimelineView.ABlock(au.startAtUs, au.timelineUs, au.label).also { blk ->
+                blk.beats = au.beats.filter { it in au.trimStartUs..au.trimEndUs }.map { au.startAtUs + ((it - au.trimStartUs) / au.speed).toLong() }
             }
         }
         b.timeline.setData(v, a)
@@ -682,10 +682,10 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         val a = project.audios.getOrNull(index) ?: return
         edit {
             if (edge == 0) {
-                val d = deltaUs.coerceIn(-minOf(a.trimStartUs, a.startAtUs), a.lengthUs - 200_000)
-                a.trimStartUs += d; a.startAtUs += d
+                val d = deltaUs.coerceIn(-minOf((a.trimStartUs / a.speed).toLong(), a.startAtUs), a.timelineUs - 200_000)
+                a.trimStartUs += (d * a.speed).toLong(); a.startAtUs += d
             } else {
-                a.trimEndUs = (a.trimEndUs + deltaUs).coerceIn(a.trimStartUs + 200_000, a.sourceDurationUs)
+                a.trimEndUs = (a.trimEndUs + (deltaUs * a.speed).toLong()).coerceIn(a.trimStartUs + 200_000, a.sourceDurationUs)
             }
         }
     }
@@ -769,7 +769,7 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
                 tool(R.drawable.i_trash, L.t("حذف", "Delete")) { deleteClip(); chip(L.t("تم حذف المقطع", "Clip deleted")) }
             }
             audio != null -> {
-                b.toolsTitle.text = "♪ ${audio.label} • " + secs(audio.lengthUs / 1e6f)
+                b.toolsTitle.text = "♪ ${audio.label} • " + secs(audio.timelineUs / 1e6f)
                 tool(R.drawable.i_back_arrow, L.t("رجوع", "Back")) { onEmptyTap() }
                 tool(R.drawable.i_volume, L.t("الصوت", "Volume")) { volumeAudio(audio) }
                 tool(R.drawable.i_fade, L.t("تلاشي", "Fade")) { fadeAudio(audio) }
@@ -939,11 +939,11 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         edit {
             val second: Clip
             if (c.type == ClipType.IMAGE) {
-                second = c.copy(id = newId(), sourceDurationUs = c.sourceDurationUs - rel, trimStartUs = 0, trimEndUs = c.sourceDurationUs - rel)
+                second = c.copy(fx = c.fx.copy(), id = newId(), sourceDurationUs = c.sourceDurationUs - rel, trimStartUs = 0, trimEndUs = c.sourceDurationUs - rel)
                 c.sourceDurationUs = rel; c.trimStartUs = 0; c.trimEndUs = rel
             } else {
                 val cut = c.trimStartUs + (rel * c.speed).toLong()
-                second = c.copy(id = newId(), trimStartUs = cut)
+                second = c.copy(fx = c.fx.copy(), id = newId(), trimStartUs = cut)
                 c.trimEndUs = cut
             }
             c.transition = Transition.NONE
@@ -986,20 +986,96 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         sheet.show()
     }
 
-    private fun volumeClip(c: Clip) {
-        val sheet = Sheet(this, L.t("صوت المقطع", "Clip audio"))
-        lateinit var s: com.google.android.material.slider.Slider
-        s = sheet.slider(L.t("مستوى الصوت", "Volume"), 0f, 2f, c.volume, { "${(it * 100).toInt()}%" }, 0.05f) { v -> edit { c.volume = v } }
-        sheet.button(if (c.volume == 0f) L.t("إلغاء الكتم", "Unmute") else L.t("كتم الصوت 🔇", "Mute 🔇"), outlined = true) {
-            val v = if (c.volume == 0f) 1f else 0f
-            s.value = v
-            edit { c.volume = v }
-            sheet.dismiss()
+    private fun volumeClip(c: Clip) = audioPanel(
+        title = L.t("صوت المقطع", "Clip audio"), fx = c.fx,
+        volume = { c.volume }, setVolume = { v -> edit { c.volume = v } },
+        speed = null, setSpeed = null, lengthUs = c.timelineUs,
+        fadeIn = { c.fx.fadeInUs }, fadeOut = { c.fx.fadeOutUs },
+        setFades = { i, o -> edit { c.fx.fadeInUs = i; c.fx.fadeOutUs = o } },
+        applyAll = { edit { project.clips.forEach { it.volume = c.volume; it.fx = c.fx.copy() } } },
+        reopen = { volumeClip(c) },
+    )
+
+    /**
+     * Pro audio panel: volume, tempo, pitch (heavier ↔ softer), voice changer, 3-band EQ with presets,
+     * noise reduction, voice isolation, leveler, echo, reverb and fades.
+     */
+    private fun audioPanel(
+        title: String,
+        fx: com.mawj.editor.model.AudioFx,
+        volume: () -> Float, setVolume: (Float) -> Unit,
+        speed: (() -> Float)?, setSpeed: ((Float) -> Unit)?,
+        lengthUs: Long,
+        fadeIn: () -> Long, fadeOut: () -> Long, setFades: (Long, Long) -> Unit,
+        applyAll: (() -> Unit)?,
+        reopen: () -> Unit,
+    ) {
+        val sheet = Sheet(this, title, L.t("تحكم كامل بالصوت — يتطبق في المعاينة والتصدير", "Full audio control — applied in preview and export"))
+        val pct: (Float) -> String = { "${(it * 100).toInt()}%" }
+        val db: (Float) -> String = { (if (it > 0) "+" else "") + String.format(Locale.US, "%.1f dB", it) }
+
+        sheet.slider(L.t("مستوى الصوت", "Volume"), 0f, 2f, volume(), pct, 0.05f) { setVolume(it) }
+        if (speed != null && setSpeed != null) {
+            sheet.slider(L.t("السرعة (النغمة ثابتة)", "Speed (pitch kept)"), 0.5f, 2f, speed(), { String.format(Locale.US, "%.2fx", it) }, 0.05f) { setSpeed(it) }
         }
-        sheet.button(L.t("تطبيق المستوى على كل المقاطع", "Apply volume to all clips"), outlined = true) {
-            edit { project.clips.forEach { it.volume = c.volume } }
-            sheet.dismiss()
+        sheet.slider(L.t("طبقة الصوت  (أثقل ← → أنعم)", "Pitch  (deeper ← → higher)"), -12f, 12f, fx.pitch,
+            { (if (it > 0) "+" else "") + String.format(Locale.US, "%.1f", it) + L.t(" نغمة", " st") }, 0.5f) { v -> edit { fx.pitch = v } }
+
+        val voices = listOf("" to L.t("بدون", "None"), "deep" to L.t("عميق", "Deep"), "chipmunk" to L.t("سنجاب", "Chipmunk"),
+            "robot" to L.t("روبوت", "Robot"), "radio" to L.t("راديو", "Radio"), "phone" to L.t("هاتف", "Phone"),
+            "megaphone" to L.t("مكبّر صوت", "Megaphone"), "cave" to L.t("كهف", "Cave"), "echo" to L.t("صدى", "Echo"),
+            "underwater" to L.t("تحت الماء", "Underwater"), "monster" to L.t("وحش", "Monster"))
+        sheet.chips(L.t("مغيّر الصوت", "Voice changer"), voices.map { it.second }, voices.indexOfFirst { it.first == fx.voice }.coerceAtLeast(0)) { i ->
+            val id = voices[i].first
+            edit {
+                fx.voice = id
+                when (id) { "deep" -> fx.pitch = -5f; "chipmunk" -> fx.pitch = 7f; "monster" -> fx.pitch = -9f; "" -> {} else -> {} }
+            }
+            sheet.dismiss(); reopen()
         }
+
+        val eqs = listOf(
+            Triple(L.t("مسطّح", "Flat"), floatArrayOf(0f, 0f, 0f), ""),
+            Triple(L.t("تعزيز الصوت البشري", "Voice boost"), floatArrayOf(-3f, 4f, 3f), ""),
+            Triple(L.t("تعزيز الجهير", "Bass boost"), floatArrayOf(7f, 0f, -1f), ""),
+            Triple(L.t("بودكاست", "Podcast"), floatArrayOf(2f, 3f, -2f), ""),
+            Triple(L.t("لامع", "Bright"), floatArrayOf(-1f, 1f, 6f), ""),
+            Triple(L.t("دافئ", "Warm"), floatArrayOf(4f, 1f, -4f), ""),
+        )
+        sheet.chips(L.t("المعادل (EQ)", "Equalizer (EQ)"), eqs.map { it.first }, eqs.indexOfFirst { it.second[0] == fx.eqLow && it.second[1] == fx.eqMid && it.second[2] == fx.eqHigh }) { i ->
+            val v = eqs[i].second
+            edit { fx.eqLow = v[0]; fx.eqMid = v[1]; fx.eqHigh = v[2] }
+            sheet.dismiss(); reopen()
+        }
+        sheet.slider(L.t("الجهير — الثقل", "Bass — weight"), -12f, 12f, fx.eqLow, db, 0.5f) { v -> edit { fx.eqLow = v } }
+        sheet.slider(L.t("الوسط — الوضوح", "Mids — presence"), -12f, 12f, fx.eqMid, db, 0.5f) { v -> edit { fx.eqMid = v } }
+        sheet.slider(L.t("الحدّة — النعومة واللمعان", "Treble — softness / brightness"), -12f, 12f, fx.eqHigh, db, 0.5f) { v -> edit { fx.eqHigh = v } }
+
+        sheet.text(L.t("تنظيف الصوت", "Cleanup"))
+        sheet.slider(L.t("تقليل التشويش", "Noise reduction"), 0f, 1f, fx.denoise, pct, 0.05f) { v -> edit { fx.denoise = v } }
+        sheet.toggle(L.t("عزل الصوت البشري (يخفف الخلفية)", "Voice isolation (reduces background)"), fx.isolate) { v -> edit { fx.isolate = v } }
+        sheet.slider(L.t("توحيد المستوى (ضاغط)", "Leveler (compressor)"), 0f, 1f, fx.compress, pct, 0.05f) { v -> edit { fx.compress = v } }
+
+        sheet.text(L.t("المساحة", "Space"))
+        sheet.slider(L.t("صدى", "Echo"), 0f, 1f, fx.echo, pct, 0.05f) { v -> edit { fx.echo = v } }
+        sheet.slider(L.t("ريفيرب (قاعة)", "Reverb (room)"), 0f, 1f, fx.reverb, pct, 0.05f) { v -> edit { fx.reverb = v } }
+
+        val maxF = (lengthUs / 2e6f).coerceIn(0.2f, 10f)
+        sheet.slider(L.t("ظهور تدريجي", "Fade in"), 0f, maxF, (fadeIn() / 1e6f).coerceAtMost(maxF), { secs(it) }, 0f) { v -> setFades((v * 1e6).toLong(), fadeOut()) }
+        sheet.slider(L.t("اختفاء تدريجي", "Fade out"), 0f, maxF, (fadeOut() / 1e6f).coerceAtMost(maxF), { secs(it) }, 0f) { v -> setFades(fadeIn(), (v * 1e6).toLong()) }
+
+        if (applyAll != null) sheet.button(L.t("تطبيق على كل المقاطع", "Apply to all clips"), outlined = true) {
+            applyAll(); sheet.dismiss(); chip(L.t("تم تطبيق الصوت على الكل", "Audio applied to all clips"))
+        }
+        sheet.button(L.t("إعادة ضبط الصوت", "Reset audio"), outlined = true) {
+            edit {
+                fx.pitch = 0f; fx.voice = ""; fx.eqLow = 0f; fx.eqMid = 0f; fx.eqHigh = 0f; fx.denoise = 0f
+                fx.isolate = false; fx.compress = 0f; fx.echo = 0f; fx.reverb = 0f
+            }
+            sheet.dismiss(); reopen()
+        }
+        sheet.note(L.t("💡 لصوت كلام نظيف: تقليل التشويش 50% + عزل الصوت + توحيد المستوى 40% + «تعزيز الصوت البشري».",
+            "💡 For clean speech: Noise reduction 50% + Voice isolation + Leveler 40% + “Voice boost”."))
         sheet.show()
     }
 
@@ -1115,7 +1191,7 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
                     if (keep.isEmpty() || (keep.size == 1 && keep[0].first <= c.trimStartUs + 50_000 && keep[0].last >= c.trimEndUs - 50_000)) continue
                     removedUs += (c.trimEndUs - c.trimStartUs) - keep.sumOf { it.last - it.first }
                     val parts = keep.mapIndexed { k, r ->
-                        c.copy(id = newId(), trimStartUs = r.first, trimEndUs = r.last,
+                        c.copy(fx = c.fx.copy(), id = newId(), trimStartUs = r.first, trimEndUs = r.last,
                             transition = if (k == keep.lastIndex) c.transition else Transition.NONE)
                     }
                     project.clips.removeAt(i)
@@ -1142,7 +1218,7 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
             // Beat times on the timeline, keeping cuts at least 0.4 s apart.
             val times = ArrayList<Long>()
             for (bt in beats) {
-                val t = a.startAtUs + (bt - a.trimStartUs)
+                val t = a.startAtUs + ((bt - a.trimStartUs) / a.speed).toLong()
                 if (t > 300_000 && (times.isEmpty() || t - times.last() >= 400_000)) times += t
             }
             edit {
@@ -1253,7 +1329,7 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
 
     private fun duplicateClip() {
         val c = project.clips.getOrNull(selClip) ?: return
-        edit { project.clips.add(selClip + 1, c.copy(id = newId())); selClip += 1 }
+        edit { project.clips.add(selClip + 1, c.copy(fx = c.fx.copy(), id = newId())); selClip += 1 }
     }
 
     private fun deleteClip() {
@@ -1316,16 +1392,20 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
 
     // ---------- Audio tools ----------
 
-    private fun volumeAudio(a: AudioClip) {
-        val sheet = Sheet(this, L.t("مستوى الصوت", "Volume"))
-        sheet.slider(L.t("مستوى «${a.label}»", "“${a.label}” volume"), 0f, 2f, a.volume, { "${(it * 100).toInt()}%" }, 0.05f) { v -> edit { a.volume = v } }
-        sheet.text(L.t("صوت المقاطع الأصلي تتحكم فيه من تحديد المقطع ← الصوت", "Original clip audio is controlled by selecting the clip → Volume"))
-        sheet.show()
-    }
+    private fun volumeAudio(a: AudioClip) = audioPanel(
+        title = "♪ " + a.label, fx = a.fx,
+        volume = { a.volume }, setVolume = { v -> edit { a.volume = v } },
+        speed = { a.speed }, setSpeed = { v -> edit { a.speed = v } },
+        lengthUs = a.timelineUs,
+        fadeIn = { a.fadeInUs }, fadeOut = { a.fadeOutUs },
+        setFades = { i, o -> edit { a.fadeInUs = i; a.fadeOutUs = o } },
+        applyAll = null,
+        reopen = { volumeAudio(a) },
+    )
 
     private fun fadeAudio(a: AudioClip) {
         val sheet = Sheet(this, L.t("تلاشي الصوت", "Audio fades"))
-        val max = (a.lengthUs / 2e6f).coerceAtMost(10f).coerceAtLeast(0.2f)
+        val max = (a.timelineUs / 2e6f).coerceAtMost(10f).coerceAtLeast(0.2f)
         sheet.slider(L.t("ظهور تدريجي", "Fade in"), 0f, max, (a.fadeInUs / 1e6f).coerceAtMost(max), { secs(it) }, 0f) { v -> edit { a.fadeInUs = (v * 1e6).toLong() } }
         sheet.slider(L.t("اختفاء تدريجي", "Fade out"), 0f, max, (a.fadeOutUs / 1e6f).coerceAtMost(max), { secs(it) }, 0f) { v -> edit { a.fadeOutUs = (v * 1e6).toLong() } }
         sheet.show()
@@ -1343,10 +1423,10 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
     private fun splitAudio() {
         val a = project.audios.getOrNull(selAudio) ?: return
         val rel = b.timeline.positionUs - a.startAtUs
-        if (rel < 100_000 || a.lengthUs - rel < 100_000) return toast(L.t("حرّك المؤشر لوسط الصوت عشان تقسمه", "Move the playhead inside the audio to split it"))
+        if (rel < 100_000 || a.timelineUs - rel < 100_000) return toast(L.t("حرّك المؤشر لوسط الصوت عشان تقسمه", "Move the playhead inside the audio to split it"))
         edit {
-            val cut = a.trimStartUs + rel
-            project.audios.add(selAudio + 1, a.copy(id = newId(), trimStartUs = cut, startAtUs = a.startAtUs + rel, fadeInUs = 0))
+            val cut = a.trimStartUs + (rel * a.speed).toLong()
+            project.audios.add(selAudio + 1, a.copy(id = newId(), trimStartUs = cut, startAtUs = a.startAtUs + rel, fadeInUs = 0, fx = a.fx.copy()))
             a.trimEndUs = cut
             a.fadeOutUs = 0
         }
@@ -1354,7 +1434,7 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
 
     private fun duplicateAudio(a: AudioClip) {
         edit {
-            project.audios += a.copy(id = newId(), startAtUs = a.startAtUs + a.lengthUs)
+            project.audios += a.copy(id = newId(), startAtUs = a.startAtUs + a.timelineUs, fx = a.fx.copy())
             selAudio = project.audios.lastIndex
         }
     }

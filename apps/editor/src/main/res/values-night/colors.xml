@@ -17,4 +17,9 @@
     <color name="audio_block">#FF4B3A8C</color>
     <color name="audio_drag">#FF7E5BE0</color>
     <color name="danger">#FFFF6B6B</color>
+    <color name="new_card">#FFBFE3DF</color>
+    <color name="new_card_sub">#FF3F5552</color>
+    <color name="new_card_dash">#FF3D5A57</color>
+    <color name="new_badge_bg">#FFF26B2A</color>
+    <color name="new_badge_text">#FF111111</color>
 </resources>

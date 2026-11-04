@@ -29,4 +29,10 @@
     <color name="card">@color/surface</color>
     <color name="accent2">#FF25F4EE</color>
     <color name="text_dim">@color/text2</color>
+    <!-- "New project" card -->
+    <color name="new_card">#FFF26B2A</color>
+    <color name="new_card_sub">#B3000000</color>
+    <color name="new_card_dash">#66000000</color>
+    <color name="new_badge_bg">#FF111111</color>
+    <color name="new_badge_text">#FFFFFFFF</color>
 </resources>

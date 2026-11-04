@@ -22,6 +22,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.gms.auth.api.identity.Identity
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.mawj.editor.MawjApp
+import com.mawj.editor.R
 import com.mawj.editor.databinding.ActivityHomeBinding
 import com.mawj.editor.databinding.ItemProjectBinding
 import com.mawj.editor.model.ClipType
@@ -52,6 +53,17 @@ class HomeActivity : AppCompatActivity() {
         }
     }
 
+    private val pickFont = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@registerForActivityResult
+        lifecycleScope.launch {
+            val f = withContext(Dispatchers.IO) { Fonts.import(this@HomeActivity, uri) }
+            if (f == null) { Toast.makeText(this@HomeActivity, "الملف مو خط صالح (استخدم TTF أو OTF)", Toast.LENGTH_LONG).show(); return@launch }
+            Fonts.setAppFont(this@HomeActivity, f.file)
+            Toast.makeText(this@HomeActivity, "تم تطبيق خط «${f.name}» ✅", Toast.LENGTH_SHORT).show()
+            recreate()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         b = ActivityHomeBinding.inflate(layoutInflater)
@@ -60,6 +72,8 @@ class HomeActivity : AppCompatActivity() {
         b.list.adapter = adapter
         b.newButton.setOnClickListener { newProject() }
         b.accountButton.setOnClickListener { showAccount() }
+        b.fontButton.setOnClickListener { showFonts() }
+        Fonts.apply(b.root)
         Glass.gradientText(b.brand)
         val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
         b.greeting.text = if (hour in 4..11) "صباح الإبداع ☀️" else "مساء الإبداع ✨"
@@ -127,6 +141,27 @@ class HomeActivity : AppCompatActivity() {
             if (n.isNotEmpty()) { store.rename(p.id, n); reload() }
             sheet.dismiss()
         }
+        sheet.show()
+    }
+
+    // ---------- Fonts ----------
+
+    private fun showFonts() {
+        val sheet = Sheet(this, "خط التطبيق", "ارفع أي خط (TTF / OTF) من جوالك ويتطبّق على كل التطبيق")
+        val current = Fonts.appFontFile(this)
+        sheet.option(R.drawable.i_text, "الخط الافتراضي", "خط النظام", current == null) {
+            Fonts.setAppFont(this, null); sheet.dismiss(); recreate()
+        }
+        Fonts.list(this).forEach { f ->
+            sheet.option(R.drawable.i_text, f.name, "اضغط للتطبيق • اضغط مطولاً للحذف", current == f.file,
+                Fonts.load(java.io.File(Fonts.dir(this), f.file))) {
+                Fonts.setAppFont(this, f.file); sheet.dismiss(); recreate()
+            }.setOnLongClickListener {
+                Fonts.delete(this, f.file); sheet.dismiss(); recreate(); true
+            }
+        }
+        sheet.button("＋ رفع خط من جوالي") { sheet.dismiss(); pickFont.launch(Fonts.PICK_TYPES) }
+        sheet.note("💡 الخطوط اللي ترفعها تقدر تستخدمها كمان في نصوص المقاطع داخل المشاريع (أداة «نص»).")
         sheet.show()
     }
 

@@ -47,6 +47,7 @@ object Glass {
     fun style(d: Dialog) {
         d.window?.setBackgroundDrawableResource(R.drawable.glass_dialog)
         blurBehind(d)
+        Fonts.apply(d.window?.decorView)
     }
 
     fun gradientText(t: TextView, vararg colors: Int = intArrayOf(PINK, VIOLET, CYAN)) {
@@ -230,7 +231,7 @@ class Sheet(private val ctx: Context, title: String, subtitle: String? = null) {
     }
 
     /** Large selectable glass option card (icon, title, description). */
-    fun option(icon: Int, title: String, desc: String, selected: Boolean, onClick: () -> Unit): View {
+    fun option(icon: Int, title: String, desc: String, selected: Boolean, face: android.graphics.Typeface? = null, onClick: () -> Unit): View {
         val card = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -249,7 +250,10 @@ class Sheet(private val ctx: Context, title: String, subtitle: String? = null) {
             setPadding(ctx.dp(10), ctx.dp(10), ctx.dp(10), ctx.dp(10))
         }, LinearLayout.LayoutParams(ctx.dp(44), ctx.dp(44)))
         val texts = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; setPadding(ctx.dp(12), 0, 0, 0) }
-        texts.addView(TextView(ctx).apply { text = title; textSize = 15f; setTextColor(Color.WHITE); setTypeface(typeface, android.graphics.Typeface.BOLD) })
+        texts.addView(TextView(ctx).apply {
+            text = title; textSize = if (face != null) 18f else 15f; setTextColor(Color.WHITE)
+            if (face != null) { typeface = face; tag = "keepFont" } else setTypeface(typeface, android.graphics.Typeface.BOLD)
+        })
         texts.addView(TextView(ctx).apply { text = desc; textSize = 12f; setTextColor(0xA6FFFFFF.toInt()) })
         card.addView(texts, LinearLayout.LayoutParams(0, -2, 1f))
         body.addView(card, LinearLayout.LayoutParams(-1, -2).apply { topMargin = ctx.dp(10) })
@@ -279,6 +283,10 @@ class Sheet(private val ctx: Context, title: String, subtitle: String? = null) {
         body.addView(row)
     }
 
-    fun show() = dialog.show()
+    fun show() {
+        Fonts.apply(body)
+        dialog.show()
+    }
+
     fun dismiss() = dialog.dismiss()
 }

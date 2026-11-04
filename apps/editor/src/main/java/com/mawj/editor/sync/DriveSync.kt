@@ -150,7 +150,7 @@ class DriveSync(private val store: ProjectStore) {
         val remote = listAll(token).associateBy { it.project + "/" + it.rel }
         val projects = if (onlyProject != null) listOf(store.load(onlyProject)) else store.list()
         projects.forEachIndexed { pi, p ->
-            val used = (p.clips.map { it.file } + p.audios.map { it.file }).toSet()
+            val used = (p.clips.map { it.file } + p.clips.map { it.textFont } + p.audios.map { it.file }).toSet()
             val media = store.mediaDir(p.id).listFiles()?.filter { it.name in used } ?: emptyList()
             media.forEachIndexed { mi, f ->
                 val rel = "media/" + f.name

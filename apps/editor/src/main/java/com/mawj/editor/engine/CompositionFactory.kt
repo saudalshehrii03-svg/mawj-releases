@@ -197,7 +197,7 @@ object CompositionFactory {
             if (abs(c.saturation) > 0.01f) {
                 videoFx += HslAdjustment.Builder().adjustSaturation(c.saturation.coerceIn(-1f, 1f) * 100f).build()
             }
-            if (c.text.isNotBlank()) videoFx += textEffect(c, opt)
+            if (c.text.isNotBlank()) videoFx += textEffect(c, opt, store, project)
             if (plan != null && plan.active) {
                 videoFx += TransitionEffects.matrix(plan)
                 videoFx += TransitionEffects.color(plan)
@@ -224,13 +224,15 @@ object CompositionFactory {
             .build()
     }
 
-    private fun textEffect(c: Clip, opt: BuildOptions): Effect {
+    private fun textEffect(c: Clip, opt: BuildOptions, store: ProjectStore, project: Project): Effect {
         val px = (64f * c.textScale * opt.canvasW / 1080f).toInt().coerceAtLeast(8)
         val s = SpannableString(c.text)
         val flags = Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
         s.setSpan(ForegroundColorSpan(c.textColor), 0, s.length, flags)
         s.setSpan(AbsoluteSizeSpan(px), 0, s.length, flags)
-        s.setSpan(StyleSpan(Typeface.BOLD), 0, s.length, flags)
+        val face = if (c.textFont.isNotEmpty()) com.mawj.editor.ui.Fonts.load(store.mediaFile(project.id, c.textFont)) else null
+        if (face != null) s.setSpan(android.text.style.TypefaceSpan(face), 0, s.length, flags)
+        else s.setSpan(StyleSpan(Typeface.BOLD), 0, s.length, flags)
         val settings = OverlaySettings.Builder()
             .setBackgroundFrameAnchor(0f, c.textPos.y)
             .build()

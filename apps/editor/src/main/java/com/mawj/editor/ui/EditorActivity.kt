@@ -93,6 +93,17 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
     private val pickAudio = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) importAudio(uri)
     }
+    private var fontTargetClip: String? = null
+    private val pickFont = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val clip = project.clips.firstOrNull { it.id == fontTargetClip }
+        if (uri == null || clip == null) return@registerForActivityResult
+        lifecycleScope.launch {
+            val f = withContext(Dispatchers.IO) { Fonts.import(this@EditorActivity, uri) }
+            if (f == null) return@launch toast("الملف مو خط صالح (استخدم TTF أو OTF)")
+            setClipFont(clip, f.file)
+            textClip(clip)
+        }
+    }
 
     // ---------- Lifecycle ----------
 
@@ -120,6 +131,7 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         })
 
         refreshAll()
+        Fonts.apply(b.root)
         rebuildPreview()
         if (intent.getBooleanExtra(EXTRA_PICK, false) && savedInstanceState == null && project.clips.isEmpty()) {
             launchMediaPicker()
@@ -466,6 +478,8 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
                 tool(R.drawable.i_send, "تيك توك HD") { showExport() }
             }
         }
+        Fonts.apply(b.tools)
+        Fonts.apply(b.toolsTitle)
     }
 
     private fun launchMediaPicker() =
@@ -660,20 +674,47 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         var pos = c.textPos
         var color = c.textColor
         var scale = c.textScale
+        val fonts = Fonts.list(this)
+        val currentFont = fonts.indexOfFirst { "f_" + it.file == c.textFont }.let { if (c.textFont.isEmpty()) 0 else it + 1 }
+        var fontChoice = currentFont
+        fun previewFont() {
+            input.typeface = if (fontChoice <= 0) android.graphics.Typeface.DEFAULT_BOLD
+            else Fonts.load(File(Fonts.dir(this), fonts[fontChoice - 1].file))
+            input.tag = "keepFont"
+        }
+        sheet.chips("الخط", listOf("الافتراضي") + fonts.map { it.name } + listOf("＋ رفع خط"), currentFont.coerceAtLeast(0)) { i ->
+            if (i == fonts.size + 1) {
+                fontTargetClip = c.id
+                sheet.dismiss()
+                pickFont.launch(Fonts.PICK_TYPES)
+            } else { fontChoice = i; previewFont() }
+        }
+        previewFont()
         sheet.chips("المكان", TextPos.entries.map { it.label }, pos.ordinal) { pos = TextPos.entries[it] }
         sheet.slider("الحجم", 0.4f, 3f, scale, { "${(it * 100).toInt()}%" }, 0.05f) { scale = it }
         sheet.text("اللون")
         val palette = intArrayOf(0xFFFFFFFF.toInt(), 0xFF000000.toInt(), 0xFFFF2D55.toInt(), 0xFF25F4EE.toInt(), 0xFFFFD60A.toInt(), 0xFF34C759.toInt(), 0xFFAF52DE.toInt())
         sheet.colors(color, palette) { color = it; toast("تم اختيار اللون") }
         sheet.button("حفظ النص") {
+            val chosen = if (fontChoice <= 0) "" else fonts[fontChoice - 1].file
             edit {
                 c.text = input.text?.toString().orEmpty()
                 c.textPos = pos; c.textColor = color; c.textScale = scale
             }
+            if (chosen.isEmpty()) { if (c.textFont.isNotEmpty()) edit { c.textFont = "" } }
+            else if (c.textFont != "f_$chosen") setClipFont(c, chosen)
             sheet.dismiss()
         }
         if (c.text.isNotEmpty()) sheet.button("حذف النص", outlined = true) { edit { c.text = "" }; sheet.dismiss() }
         sheet.show()
+    }
+
+    /** Copies an app font into the project (so it travels with backups) and uses it for the clip's text. */
+    private fun setClipFont(c: Clip, appFontFile: String) {
+        val name = "f_$appFontFile"
+        val dest = store.mediaFile(project.id, name)
+        if (!dest.exists()) File(Fonts.dir(this), appFontFile).copyTo(dest, overwrite = true)
+        edit { c.textFont = name }
     }
 
     private fun moveClip(dir: Int) {

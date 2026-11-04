@@ -73,6 +73,8 @@ data class Clip(
     var textPos: TextPos = TextPos.BOTTOM,
     var textColor: Int = 0xFFFFFFFF.toInt(),
     var textScale: Float = 1f,
+    /** Font file (inside the project's media folder) for the on-video text; empty = default. */
+    var textFont: String = "",
 ) {
     /** Duration of this clip on the output timeline. */
     val timelineUs: Long get() = ((trimEndUs - trimStartUs) / speed).toLong().coerceAtLeast(1)
@@ -84,7 +86,7 @@ data class Clip(
         put("tr", transition.name); put("trUs", transitionUs)
         put("br", brightness.toDouble()); put("co", contrast.toDouble()); put("sa", saturation.toDouble())
         put("rot", rotation); put("mir", mirror); put("fill", fill)
-        put("text", text); put("tpos", textPos.name); put("tcol", textColor); put("tsc", textScale.toDouble())
+        put("text", text); put("tpos", textPos.name); put("tcol", textColor); put("tsc", textScale.toDouble()); put("tfont", textFont)
     }
 
     companion object {
@@ -111,6 +113,7 @@ data class Clip(
                 textPos = runCatching { TextPos.valueOf(o.optString("tpos")) }.getOrDefault(TextPos.BOTTOM),
                 textColor = o.optInt("tcol", 0xFFFFFFFF.toInt()),
                 textScale = o.optDouble("tsc", 1.0).toFloat(),
+                textFont = o.optString("tfont", ""),
             )
         }
     }

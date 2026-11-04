@@ -111,7 +111,7 @@ class ProjectStore(context: Context) {
 
     /** Removes media files no longer referenced by the project. */
     fun cleanupMedia(p: Project) {
-        val used = (p.clips.map { it.file } + p.audios.map { it.file }).toSet()
+        val used = (p.clips.map { it.file } + p.clips.map { it.textFont } + p.audios.map { it.file }).toSet()
         mediaDir(p.id).listFiles()?.forEach { if (it.name !in used) it.delete() }
     }
 }

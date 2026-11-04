@@ -19,7 +19,8 @@ import androidx.media3.effect.HslAdjustment
 import androidx.media3.effect.OverlayEffect
 import androidx.media3.effect.Presentation
 import androidx.media3.effect.ScaleAndRotateTransformation
-import androidx.media3.effect.StaticOverlaySettings
+import androidx.media3.effect.OverlaySettings
+import androidx.media3.effect.TextureOverlay
 import androidx.media3.effect.TextOverlay
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
@@ -176,10 +177,10 @@ object CompositionFactory {
         s.setSpan(ForegroundColorSpan(c.textColor), 0, s.length, flags)
         s.setSpan(AbsoluteSizeSpan(px), 0, s.length, flags)
         s.setSpan(StyleSpan(Typeface.BOLD), 0, s.length, flags)
-        val settings = StaticOverlaySettings.Builder()
+        val settings = OverlaySettings.Builder()
             .setBackgroundFrameAnchor(0f, c.textPos.y)
             .build()
-        return OverlayEffect(ImmutableList.of(TextOverlay.createStaticTextOverlay(s, settings)))
+        return OverlayEffect(ImmutableList.of<TextureOverlay>(TextOverlay.createStaticTextOverlay(s, settings)))
     }
 }
 

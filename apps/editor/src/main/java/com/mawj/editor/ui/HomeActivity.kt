@@ -111,7 +111,7 @@ class HomeActivity : AppCompatActivity() {
             setOnClickListener { onClick() }
         }, android.widget.LinearLayout.LayoutParams(-1, dp(68)))
         col.addView(TextView(this).apply {
-            text = label; textSize = 11f; setTextColor(0x99FFFFFF.toInt())
+            text = label; textSize = 11f; setTextColor(col(R.color.text2))
             gravity = android.view.Gravity.CENTER; setPadding(0, dp(6), 0, 0); maxLines = 1
         })
         b.tiles.addView(col, android.widget.LinearLayout.LayoutParams(0, -2, 1f).apply {
@@ -133,6 +133,9 @@ class HomeActivity : AppCompatActivity() {
 
     private fun showSettings() {
         val sheet = Sheet(this, L.t("الإعدادات", "Settings"))
+        sheet.chips(L.t("المظهر", "Appearance"), listOf(L.t("تلقائي (حسب الجهاز)", "Auto (follow device)"), L.t("فاتح", "Light"), L.t("داكن", "Dark")), L.theme(this)) { i ->
+            if (i != L.theme(this)) { sheet.dismiss(); L.applyTheme(this, i) }
+        }
         sheet.chips(L.t("لغة التطبيق", "App language"), listOf("العربية", "English"), if (L.en) 1 else 0) { i ->
             val en = i == 1
             if (en != L.en) { sheet.dismiss(); L.set(this, en) }
@@ -186,11 +189,11 @@ class HomeActivity : AppCompatActivity() {
             b.sectionTitle.text = L.t("${selected.size} محدد", "${selected.size} selected")
             b.settingsPill.text = L.t("إلغاء", "Cancel")
             b.accountLine.text = L.t("🗑 حذف", "🗑 Delete")
-            b.accountLine.setTextColor(0xFFFF6B6B.toInt())
+            b.accountLine.setTextColor(col(R.color.danger))
         } else {
             b.sectionTitle.text = L.t("المشاريع", "PROJECTS")
             b.settingsPill.text = L.t("الإعدادات", "Settings")
-            b.accountLine.setTextColor(0xFFFFFFFF.toInt())
+            b.accountLine.setTextColor(col(R.color.text))
             updateAccountLine()
         }
     }

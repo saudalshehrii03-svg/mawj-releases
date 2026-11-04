@@ -4,7 +4,7 @@
     android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#FF0F0F11"
+    android:background="@color/bg"
     android:clipChildren="false"
     android:fitsSystemWindows="true">
 
@@ -43,7 +43,7 @@
             android:layout_weight="1"
             android:ellipsize="end"
             android:maxLines="1"
-            android:textColor="#99FFFFFF"
+            android:textColor="@color/text2"
             android:textSize="13sp" />
 
         <ImageButton
@@ -89,6 +89,7 @@
         android:layout_marginTop="4dp"
         android:layout_marginEnd="14dp"
         android:layout_marginBottom="150dp"
+        android:background="@drawable/preview_bg"
         android:clipChildren="false">
 
         <androidx.media3.ui.PlayerView
@@ -107,7 +108,7 @@
             android:layout_gravity="center"
             android:gravity="center"
             android:padding="24dp"
-            android:textColor="#80FFFFFF"
+            android:textColor="@color/text2"
             android:textSize="14sp" />
 
         <!-- Action feedback chips (e.g. "Clip split") -->
@@ -130,7 +131,7 @@
             android:paddingTop="4dp"
             android:paddingEnd="12dp"
             android:paddingBottom="4dp"
-            android:textColor="#FFFFFF"
+            android:textColor="@color/text"
             android:textSize="12sp"
             android:visibility="gone" />
 
@@ -142,7 +143,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_gravity="bottom"
-        android:background="#FF0F0F11"
+        android:background="@color/bg"
         android:orientation="vertical">
 
         <!-- Control bar: full screen • mute | play | undo • redo  (also the resize handle) -->
@@ -242,7 +243,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:fontFeatureSettings="tnum"
-                android:textColor="#FFFFFF"
+                android:textColor="@color/text"
                 android:textSize="11sp" />
 
             <TextView
@@ -251,7 +252,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginStart="6dp"
                 android:fontFeatureSettings="tnum"
-                android:textColor="#66FFFFFF"
+                android:textColor="@color/text3"
                 android:textSize="11sp" />
         </LinearLayout>
 
@@ -277,7 +278,7 @@
         android:id="@+id/toolsBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="#FF141416"
+        android:background="@color/bar"
         android:orientation="vertical">
 
         <TextView
@@ -286,7 +287,7 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="16dp"
             android:maxLines="1"
-            android:textColor="#66FFFFFF"
+            android:textColor="@color/text3"
             android:textSize="11sp" />
 
         <!-- Tool bar -->
@@ -325,6 +326,7 @@
 
         <ImageButton
             android:id="@+id/fullPlay"
+                android:tint="#FFFFFFFF"
             android:layout_width="44dp"
             android:layout_height="44dp"
             android:background="@drawable/btn_flat"
@@ -344,6 +346,7 @@
 
         <ImageButton
             android:id="@+id/fullExit"
+                android:tint="#FFFFFFFF"
             android:layout_width="44dp"
             android:layout_height="44dp"
             android:background="@drawable/btn_flat"

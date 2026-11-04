@@ -1,0 +1,20 @@
+<resources>
+    <color name="bg">#FF0F0F11</color>
+    <color name="surface">#FF1C1C1F</color>
+    <color name="surface2">#FF26262A</color>
+    <color name="bar">#FF141416</color>
+    <color name="sheet">#FF17171A</color>
+    <color name="timeline_bg">#FF111116</color>
+    <color name="clip_bg">#FF24242C</color>
+    <color name="text">#FFFFFFFF</color>
+    <color name="text2">#99FFFFFF</color>
+    <color name="text3">#66FFFFFF</color>
+    <color name="icon">#FFFFFFFF</color>
+    <color name="stroke">#14FFFFFF</color>
+    <color name="outline">#66FFFFFF</color>
+    <color name="ripple">#33FFFFFF</color>
+    <color name="handle">#55FFFFFF</color>
+    <color name="audio_block">#FF4B3A8C</color>
+    <color name="audio_drag">#FF7E5BE0</color>
+    <color name="danger">#FFFF6B6B</color>
+</resources>

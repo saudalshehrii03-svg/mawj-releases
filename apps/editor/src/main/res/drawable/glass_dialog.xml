@@ -1,6 +1,6 @@
 <inset xmlns:android="http://schemas.android.com/apk/res/android" android:inset="24dp">
     <shape>
-        <solid android:color="#FF1C1C1F" />
+        <solid android:color="@color/surface" />
         <corners android:radius="24dp" />
     </shape>
 </inset>

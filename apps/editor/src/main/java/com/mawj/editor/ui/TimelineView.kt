@@ -71,8 +71,18 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
     private val trSize = 26 * d
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; textSize = 11 * d }
-    private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 3 * d; color = Color.WHITE }
+    private fun col(id: Int) = androidx.core.content.ContextCompat.getColor(context, id)
+    private val cText = col(com.mawj.editor.R.color.text)
+    private val cText3 = col(com.mawj.editor.R.color.text3)
+    private val cBg = col(com.mawj.editor.R.color.bg)
+    private val cClip = col(com.mawj.editor.R.color.clip_bg)
+    private val cSurface2 = col(com.mawj.editor.R.color.surface2)
+    private val cOutline = col(com.mawj.editor.R.color.outline)
+    private val cAudio = col(com.mawj.editor.R.color.audio_block)
+    private val cAudioDrag = col(com.mawj.editor.R.color.audio_drag)
+    private val badgeText = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; textSize = 11 * d }
+    private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = cText; textSize = 11 * d }
+    private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 3 * d; color = cText }
     private val path = Path()
     private val rect = RectF()
     private val src = Rect()
@@ -145,7 +155,7 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
             canvas.save()
             path.reset(); path.addRoundRect(rect, 8 * d, 8 * d, Path.Direction.CW)
             canvas.clipPath(path)
-            paint.color = 0xFF24242C.toInt()
+            paint.color = cClip
             canvas.drawRect(rect, paint)
             val thumb = thumbProvider(b.key)
             if (thumb != null) {
@@ -164,12 +174,12 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
             // Duration badge
             val label = fmt(b.durUs) + if (b.hasText) "  T" else ""
             paint.color = 0x99000000.toInt()
-            val tw = text.measureText(label)
+            val tw = badgeText.measureText(label)
             canvas.drawRoundRect(l + 4 * d, videoTop + videoH - 18 * d, l + 12 * d + tw, videoTop + videoH - 3 * d, 4 * d, 4 * d, paint)
-            canvas.drawText(label, l + 8 * d, videoTop + videoH - 7 * d, text)
+            canvas.drawText(label, l + 8 * d, videoTop + videoH - 7 * d, badgeText)
             canvas.restore()
             if (i == selectedClip) {
-                stroke.color = Color.WHITE; stroke.strokeWidth = 2 * d
+                stroke.color = cText; stroke.strokeWidth = 2 * d
                 canvas.drawRoundRect(rect, 8 * d, 8 * d, stroke)
                 drawHandles(canvas, rect)
             }
@@ -179,9 +189,9 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
         if (blocks.isNotEmpty()) {
             val end = x(blocks.last().startUs + blocks.last().durUs) + 10 * d
             addRect.set(end, videoTop + 8 * d, end + videoH - 16 * d, videoTop + videoH - 8 * d)
-            paint.color = 0xFF2A2A33.toInt()
+            paint.color = cSurface2
             canvas.drawRoundRect(addRect, 8 * d, 8 * d, paint)
-            paint.color = Color.WHITE
+            paint.color = cText
             val cx = addRect.centerX(); val cy = addRect.centerY(); val k = 7 * d
             canvas.drawRect(cx - k, cy - 1 * d, cx + k, cy + 1 * d, paint)
             canvas.drawRect(cx - 1 * d, cy - k, cx + 1 * d, cy + k, paint)
@@ -194,14 +204,14 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
             transitionRect(cx, rect)
             val tr = blocks[i].transition
             val has = tr != Transition.NONE
-            paint.color = if (has) Color.WHITE else 0xFF1C1C22.toInt()
+            paint.color = if (has) cText else cSurface2
             canvas.drawRoundRect(rect, 6 * d, 6 * d, paint)
-            stroke.color = 0x55FFFFFF; stroke.strokeWidth = 1 * d
+            stroke.color = cOutline; stroke.strokeWidth = 1 * d
             canvas.drawRoundRect(rect, 6 * d, 6 * d, stroke)
-            text.color = if (has) Color.BLACK else Color.WHITE
+            text.color = if (has) cBg else cText
             val s = if (!has) "+" else if (tr.overlap) "✦" else "⇄"
             canvas.drawText(s, cx - text.measureText(s) / 2, rect.centerY() + 4 * d, text)
-            text.color = Color.WHITE
+            text.color = cText
         }
 
         // Audio lanes
@@ -214,7 +224,7 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
                 if (trimEdge == 0) rect.left = min(rect.left + dpx, rect.right - 8 * d) else rect.right = max(rect.right + dpx, rect.left + 8 * d)
             }
             if (rect.right < 0 || rect.left > width) return@forEachIndexed
-            paint.color = if (i == dragAudio) 0xFF7E5BE0.toInt() else 0xFF4B3A8C.toInt()
+            paint.color = if (i == dragAudio) cAudioDrag else cAudio
             canvas.drawRoundRect(rect, 6 * d, 6 * d, paint)
             if (a.beats.isNotEmpty() && i != dragAudio) {
                 paint.color = 0xFFF26B2A.toInt()
@@ -225,22 +235,22 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
             }
             canvas.save()
             canvas.clipRect(rect)
-            canvas.drawText("♪ " + a.label, rect.left + 6 * d, rect.centerY() + 4 * d, text)
+            canvas.drawText("♪ " + a.label, rect.left + 6 * d, rect.centerY() + 4 * d, badgeText)
             canvas.restore()
             if (i == selectedAudio) {
-                stroke.color = Color.WHITE; stroke.strokeWidth = 2 * d
+                stroke.color = cText; stroke.strokeWidth = 2 * d
                 canvas.drawRoundRect(rect, 6 * d, 6 * d, stroke)
                 drawHandles(canvas, rect)
             }
         }
         if (audios.isEmpty()) {
-            text.color = 0x80FFFFFF.toInt()
+            text.color = cText3
             canvas.drawText(L.t("♪ مسار الصوت — أضف صوت أو استخرجه من مقطع", "♪ Audio track — add audio or extract it from a clip"), width / 2f + 10 * d, audioTop + laneH / 2 + 4 * d, text)
-            text.color = Color.WHITE
+            text.color = cText
         }
 
         // Playhead
-        paint.color = Color.WHITE
+        paint.color = cText
         canvas.drawRect(width / 2f - 1 * d, rulerH - 4 * d, width / 2f + 1 * d, height.toFloat(), paint)
         canvas.drawCircle(width / 2f, rulerH - 4 * d, 5 * d, paint)
     }
@@ -251,8 +261,8 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
         val step = steps.firstOrNull { it * pxPerSec >= minLabelPx } ?: 60
         val firstSec = max(0L, usAt(0f) / 1_000_000 / step * step)
         val lastSec = min(totalUs / 1_000_000 + 1, usAt(width.toFloat()) / 1_000_000 + step)
-        text.color = 0x80FFFFFF.toInt()
-        paint.color = 0x55FFFFFF
+        text.color = cText3
+        paint.color = cText3
         var s = firstSec
         while (s <= lastSec) {
             val px = x(s * 1_000_000)
@@ -260,15 +270,15 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
             canvas.drawText(String.format(Locale.US, "%d:%02d", s / 60, s % 60), px + 3 * d, rulerH - 8 * d, text)
             s += step
         }
-        text.color = Color.WHITE
+        text.color = cText
     }
 
     /** White trim handles on both edges of the selected item. */
     private fun drawHandles(canvas: Canvas, r: RectF) {
-        paint.color = Color.WHITE
+        paint.color = cText
         canvas.drawRoundRect(r.left - handleW / 2, r.top, r.left + handleW / 2, r.bottom, 4 * d, 4 * d, paint)
         canvas.drawRoundRect(r.right - handleW / 2, r.top, r.right + handleW / 2, r.bottom, 4 * d, 4 * d, paint)
-        paint.color = 0xFF111116.toInt()
+        paint.color = cBg
         val cy = r.centerY()
         canvas.drawRect(r.left - 1 * d, cy - 7 * d, r.left + 1 * d, cy + 7 * d, paint)
         canvas.drawRect(r.right - 1 * d, cy - 7 * d, r.right + 1 * d, cy + 7 * d, paint)

@@ -30,7 +30,7 @@
             android:layout_marginTop="4dp"
             android:ellipsize="end"
             android:maxLines="1"
-            android:textColor="#FFFFFF"
+            android:textColor="@color/text"
             android:textSize="15sp"
             android:textStyle="bold" />
 
@@ -41,7 +41,7 @@
             android:layout_marginTop="2dp"
             android:ellipsize="end"
             android:maxLines="1"
-            android:textColor="#8AFFFFFF"
+            android:textColor="@color/text2"
             android:textSize="12sp" />
 
         <View
@@ -56,7 +56,7 @@
             android:layout_marginBottom="2dp"
             android:fontFeatureSettings="tnum"
             android:maxLines="1"
-            android:textColor="#66FFFFFF"
+            android:textColor="@color/text3"
             android:textSize="11sp" />
     </LinearLayout>
 

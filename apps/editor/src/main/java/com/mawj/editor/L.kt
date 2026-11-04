@@ -18,6 +18,24 @@ object L {
         else c.getSharedPreferences("lang", Context.MODE_PRIVATE).getString("lang", "ar") == "en"
     }
 
+    // ---------- Appearance (follow system / light / dark) ----------
+
+    private fun ui(c: Context) = c.getSharedPreferences("ui", Context.MODE_PRIVATE)
+
+    /** 0 = follow the device, 1 = light, 2 = dark. */
+    fun theme(c: Context): Int = ui(c).getInt("theme", 0)
+
+    fun applyTheme(c: Context, mode: Int = theme(c)) {
+        ui(c).edit().putInt("theme", mode).apply()
+        AppCompatDelegate.setDefaultNightMode(
+            when (mode) {
+                1 -> AppCompatDelegate.MODE_NIGHT_NO
+                2 -> AppCompatDelegate.MODE_NIGHT_YES
+                else -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+            }
+        )
+    }
+
     /** Switches the app language; activities are recreated with the right direction (RTL / LTR). */
     fun set(c: Context, english: Boolean) {
         en = english

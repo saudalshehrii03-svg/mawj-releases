@@ -29,6 +29,9 @@ import com.mawj.editor.R
 
 fun Context.dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
+/** Theme-aware color (light / dark). */
+fun Context.col(id: Int) = androidx.core.content.ContextCompat.getColor(this, id)
+
 object Glass {
     const val PINK = 0xFFF26B2A.toInt()
     const val VIOLET = 0xFF8B5CF6.toInt()
@@ -72,18 +75,18 @@ class Sheet(private val ctx: Context, title: String, subtitle: String? = null) {
     init {
         // Grab handle
         body.addView(View(ctx).apply {
-            background = GradientDrawable().apply { cornerRadius = ctx.dp(3).toFloat(); setColor(0x55FFFFFF) }
+            background = GradientDrawable().apply { cornerRadius = ctx.dp(3).toFloat(); setColor(ctx.col(R.color.handle)) }
         }, LinearLayout.LayoutParams(ctx.dp(36), ctx.dp(4)).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = ctx.dp(10) })
         body.addView(TextView(ctx).apply {
             text = title
             textSize = 17f
-            setTextColor(Color.WHITE)
+            setTextColor(ctx.col(R.color.text))
             setTypeface(typeface, android.graphics.Typeface.BOLD)
         })
         if (subtitle != null) body.addView(TextView(ctx).apply {
             text = subtitle
             textSize = 13f
-            setTextColor(0x99FFFFFF.toInt())
+            setTextColor(ctx.col(R.color.text2))
             setPadding(0, ctx.dp(2), 0, 0)
         })
         val scroll = android.widget.ScrollView(ctx).apply {
@@ -103,7 +106,7 @@ class Sheet(private val ctx: Context, title: String, subtitle: String? = null) {
     private fun label(t: String) = TextView(ctx).apply {
         text = t
         textSize = 13f
-        setTextColor(0x99FFFFFF.toInt())
+        setTextColor(ctx.col(R.color.text2))
         setPadding(0, ctx.dp(12), 0, ctx.dp(2))
     }.also { body.addView(it) }
 
@@ -114,7 +117,7 @@ class Sheet(private val ctx: Context, title: String, subtitle: String? = null) {
         text = t
         textSize = 13f
         setLineSpacing(ctx.dp(3).toFloat(), 1f)
-        setTextColor(0xCCFFFFFF.toInt())
+        setTextColor(ctx.col(R.color.text))
         setBackgroundResource(R.drawable.glass_panel)
         setPadding(ctx.dp(14), ctx.dp(12), ctx.dp(14), ctx.dp(12))
     }.also {
@@ -140,8 +143,8 @@ class Sheet(private val ctx: Context, title: String, subtitle: String? = null) {
             trackHeight = ctx.dp(4)
             thumbRadius = ctx.dp(9)
             haloRadius = ctx.dp(16)
-            thumbTintList = ColorStateList.valueOf(Color.WHITE)
-            trackInactiveTintList = ColorStateList.valueOf(0x33FFFFFF)
+            thumbTintList = ColorStateList.valueOf(Glass.PINK)
+            trackInactiveTintList = ColorStateList.valueOf(ctx.col(R.color.surface2))
             addOnChangeListener { _, v, _ -> l.text = "$title: ${format(v)}" }
             addOnSliderTouchListener(object : Slider.OnSliderTouchListener {
                 override fun onStartTrackingTouch(slider: Slider) {}
@@ -168,8 +171,8 @@ class Sheet(private val ctx: Context, title: String, subtitle: String? = null) {
             trackHeight = ctx.dp(4)
             thumbRadius = ctx.dp(9)
             haloRadius = ctx.dp(16)
-            thumbTintList = ColorStateList.valueOf(Color.WHITE)
-            trackInactiveTintList = ColorStateList.valueOf(0x33FFFFFF)
+            thumbTintList = ColorStateList.valueOf(Glass.PINK)
+            trackInactiveTintList = ColorStateList.valueOf(ctx.col(R.color.surface2))
             addOnChangeListener { sl, _, _ -> l.text = "$title: ${format(sl.values[0])} → ${format(sl.values[1])}" }
             addOnSliderTouchListener(object : RangeSlider.OnSliderTouchListener {
                 override fun onStartTrackingTouch(slider: RangeSlider) {}
@@ -195,9 +198,9 @@ class Sheet(private val ctx: Context, title: String, subtitle: String? = null) {
                 isCheckedIconVisible = false
                 isChecked = i == selected
                 chipMinHeight = ctx.dp(34).toFloat()
-                chipBackgroundColor = ColorStateList(states, intArrayOf(Glass.PINK, 0xFF26262B.toInt()))
+                chipBackgroundColor = ColorStateList(states, intArrayOf(Glass.PINK, ctx.col(R.color.surface2)))
                 chipStrokeWidth = 0f
-                setTextColor(ColorStateList(states, intArrayOf(0xFF111111.toInt(), 0xE6FFFFFF.toInt())))
+                setTextColor(ColorStateList(states, intArrayOf(0xFF111111.toInt(), ctx.col(R.color.text))))
                 setEnsureMinTouchTargetSize(false)
                 setOnClickListener { onSelect(i) }
             })
@@ -217,7 +220,7 @@ class Sheet(private val ctx: Context, title: String, subtitle: String? = null) {
         val frames = ArrayList<ImageView>()
         fun mark(sel: Int) = frames.forEachIndexed { k, v ->
             v.background = GradientDrawable().apply {
-                cornerRadius = ctx.dp(12).toFloat(); setColor(0xFF26262B.toInt())
+                cornerRadius = ctx.dp(12).toFloat(); setColor(ctx.col(R.color.surface2))
                 if (k == sel) setStroke(ctx.dp(2), Glass.PINK)
             }
         }
@@ -233,7 +236,7 @@ class Sheet(private val ctx: Context, title: String, subtitle: String? = null) {
             frames += img
             col.addView(img, LinearLayout.LayoutParams(ctx.dp(64), ctx.dp(64)))
             col.addView(TextView(ctx).apply {
-                text = name; textSize = 11f; setTextColor(0xCCFFFFFF.toInt()); maxLines = 1
+                text = name; textSize = 11f; setTextColor(ctx.col(R.color.text2)); maxLines = 1
                 gravity = Gravity.CENTER; setPadding(0, ctx.dp(4), 0, 0)
             }, LinearLayout.LayoutParams(ctx.dp(72), -2))
             row.addView(col, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = ctx.dp(6) })
@@ -248,7 +251,7 @@ class Sheet(private val ctx: Context, title: String, subtitle: String? = null) {
         val s = MaterialSwitch(ctx).apply {
             text = t
             isChecked = checked
-            setTextColor(Color.WHITE)
+            setTextColor(ctx.col(R.color.text))
             setOnCheckedChangeListener { _, v -> onChange(v) }
         }
         body.addView(s, LinearLayout.LayoutParams(-1, -2).apply { topMargin = ctx.dp(8) })
@@ -259,7 +262,7 @@ class Sheet(private val ctx: Context, title: String, subtitle: String? = null) {
         val layout = TextInputLayout(ctx, null, com.google.android.material.R.attr.textInputOutlinedStyle).apply {
             boxStrokeColor = Glass.PINK
             setBoxCornerRadii(ctx.dp(16).toFloat(), ctx.dp(16).toFloat(), ctx.dp(16).toFloat(), ctx.dp(16).toFloat())
-            boxBackgroundColor = 0x14FFFFFF
+            boxBackgroundColor = ctx.col(R.color.surface2)
         }
         val e = TextInputEditText(layout.context).apply { setText(value); this.hint = hint }
         layout.addView(e)
@@ -273,9 +276,9 @@ class Sheet(private val ctx: Context, title: String, subtitle: String? = null) {
             text = t
             textSize = 15f
             gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
+            setTextColor(ctx.col(if (outlined) R.color.text else R.color.on_accent))
             setTypeface(typeface, android.graphics.Typeface.BOLD)
-            setBackgroundResource(if (outlined) R.drawable.glass_pill else R.drawable.accent_gradient)
+            setBackgroundResource(if (outlined) R.drawable.pill_dark else R.drawable.accent_gradient)
             if (outlined) foreground = ctx.getDrawable(android.R.drawable.list_selector_background)
             isClickable = true
             isFocusable = true
@@ -293,8 +296,8 @@ class Sheet(private val ctx: Context, title: String, subtitle: String? = null) {
             setPadding(ctx.dp(14), ctx.dp(14), ctx.dp(14), ctx.dp(14))
             background = GradientDrawable().apply {
                 cornerRadius = ctx.dp(20).toFloat()
-                setColor(if (selected) 0x33FF2D7A else 0x14FFFFFF)
-                setStroke(ctx.dp(if (selected) 2 else 1), if (selected) Glass.PINK else 0x33FFFFFF)
+                setColor(if (selected) 0x33FF2D7A else ctx.col(R.color.surface2))
+                setStroke(ctx.dp(if (selected) 2 else 1), if (selected) Glass.PINK else ctx.col(R.color.stroke))
             }
             isClickable = true
             setOnClickListener { onClick() }
@@ -306,10 +309,10 @@ class Sheet(private val ctx: Context, title: String, subtitle: String? = null) {
         }, LinearLayout.LayoutParams(ctx.dp(44), ctx.dp(44)))
         val texts = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; setPadding(ctx.dp(12), 0, 0, 0) }
         texts.addView(TextView(ctx).apply {
-            text = title; textSize = if (face != null) 18f else 15f; setTextColor(Color.WHITE)
+            text = title; textSize = if (face != null) 18f else 15f; setTextColor(ctx.col(R.color.text))
             if (face != null) { typeface = face; tag = "keepFont" } else setTypeface(typeface, android.graphics.Typeface.BOLD)
         })
-        texts.addView(TextView(ctx).apply { text = desc; textSize = 12f; setTextColor(0xA6FFFFFF.toInt()) })
+        texts.addView(TextView(ctx).apply { text = desc; textSize = 12f; setTextColor(ctx.col(R.color.text2)) })
         card.addView(texts, LinearLayout.LayoutParams(0, -2, 1f))
         body.addView(card, LinearLayout.LayoutParams(-1, -2).apply { topMargin = ctx.dp(10) })
         return card
@@ -322,7 +325,7 @@ class Sheet(private val ctx: Context, title: String, subtitle: String? = null) {
             v.background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
                 setColor(c)
-                setStroke(ctx.dp(if (sel) 3 else 1), if (sel) Glass.PINK else 0x55FFFFFF)
+                setStroke(ctx.dp(if (sel) 3 else 1), if (sel) Glass.PINK else ctx.col(R.color.outline))
             }
         }
         options.forEach { c ->

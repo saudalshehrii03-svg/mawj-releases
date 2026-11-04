@@ -683,11 +683,11 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         }
         item.addView(ImageView(this).apply {
             setImageResource(icon)
-            imageTintList = android.content.res.ColorStateList.valueOf(if (accent) Glass.PINK else 0xFFFFFFFF.toInt())
+            imageTintList = android.content.res.ColorStateList.valueOf(if (accent) Glass.PINK else col(R.color.icon))
         }, LinearLayout.LayoutParams(dp(22), dp(22)).apply { topMargin = dp(6) })
         item.addView(TextView(this).apply {
             text = label; textSize = 10.5f; gravity = Gravity.CENTER
-            setTextColor(if (accent) Glass.PINK else 0x99FFFFFF.toInt()); maxLines = 1
+            setTextColor(if (accent) Glass.PINK else col(R.color.text2)); maxLines = 1
             setPadding(0, dp(6), 0, dp(4))
         })
         b.tools.addView(item, LinearLayout.LayoutParams(dp(64), LinearLayout.LayoutParams.WRAP_CONTENT))
@@ -698,7 +698,7 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         val v = TextView(this).apply {
             text = "✓  $msg"
             textSize = 12f
-            setTextColor(0xFFFFFFFF.toInt())
+            setTextColor(col(R.color.text))
             setBackgroundResource(R.drawable.pill_dark)
             setPadding(dp(12), dp(5), dp(12), dp(5))
             alpha = 0f
@@ -1439,7 +1439,7 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         val bar = LinearProgressIndicator(this).apply { max = 100; trackCornerRadius = dp(4); trackThickness = dp(8) }
-        val label = TextView(this).apply { text = L.t("تجهيز…", "Preparing…"); setPadding(0, dp(10), 0, 0); setTextColor(0xCCFFFFFF.toInt()) }
+        val label = TextView(this).apply { text = L.t("تجهيز…", "Preparing…"); setPadding(0, dp(10), 0, 0); setTextColor(col(R.color.text2)) }
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(24), dp(12), dp(24), dp(8))
@@ -1556,7 +1556,7 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
     private fun squareOf(bm: Bitmap?, size: Int = 128): Bitmap {
         val out = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val cv = android.graphics.Canvas(out)
-        if (bm == null) { cv.drawColor(0xFF3A3A40.toInt()); return out }
+        if (bm == null) { cv.drawColor(col(R.color.surface2)); return out }
         val side = minOf(bm.width, bm.height)
         val src = android.graphics.Rect((bm.width - side) / 2, (bm.height - side) / 2, (bm.width + side) / 2, (bm.height + side) / 2)
         cv.drawBitmap(bm, src, android.graphics.Rect(0, 0, size, size), android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG))

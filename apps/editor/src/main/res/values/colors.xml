@@ -1,9 +1,32 @@
 <resources>
-    <color name="bg">#0B0B10</color>
-    <color name="surface">#16161E</color>
-    <color name="card">#1C1C26</color>
-    <color name="accent">#FF2D55</color>
-    <color name="accent2">#25F4EE</color>
-    <color name="text_dim">#9A9AAA</color>
-    <color name="ic_bg">#0F0F16</color>
+    <!-- Light theme tokens (dark versions in values-night) -->
+    <color name="bg">#FFF3F3F6</color>
+    <color name="surface">#FFFFFFFF</color>
+    <color name="surface2">#FFE9E9EE</color>
+    <color name="bar">#FFFFFFFF</color>
+    <color name="sheet">#FFFFFFFF</color>
+    <color name="timeline_bg">#FFEAEAEF</color>
+    <color name="clip_bg">#FFD8D8DE</color>
+    <color name="text">#FF111114</color>
+    <color name="text2">#99000000</color>
+    <color name="text3">#66000000</color>
+    <color name="icon">#FF1C1C21</color>
+    <color name="stroke">#14000000</color>
+    <color name="outline">#33000000</color>
+    <color name="ripple">#1F000000</color>
+    <color name="handle">#33000000</color>
+    <color name="audio_block">#FF8E7BE0</color>
+    <color name="audio_drag">#FF6C55D6</color>
+
+    <!-- Shared -->
+    <color name="accent">#FFF26B2A</color>
+    <color name="on_accent">#FF111111</color>
+    <color name="mint">#FFBFE3DF</color>
+    <color name="preview">#FF000000</color>
+    <color name="ic_bg">#FF0F0F16</color>
+    <color name="danger">#FFE5484D</color>
+    <!-- legacy names -->
+    <color name="card">@color/surface</color>
+    <color name="accent2">#FF25F4EE</color>
+    <color name="text_dim">@color/text2</color>
 </resources>

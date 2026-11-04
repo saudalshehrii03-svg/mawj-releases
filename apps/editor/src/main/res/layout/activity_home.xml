@@ -2,7 +2,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#FF0F0F11"
+    android:background="@color/bg"
     android:fitsSystemWindows="true"
     android:orientation="vertical">
 
@@ -36,7 +36,7 @@
                     android:fontFamily="sans-serif-black"
                     android:letterSpacing="0.02"
                     android:text="MAWJ+"
-                    android:textColor="#FFFFFF"
+                    android:textColor="@color/text"
                     android:textSize="24sp" />
 
                 <TextView
@@ -51,7 +51,7 @@
                     android:gravity="center"
                     android:paddingStart="12dp"
                     android:paddingEnd="14dp"
-                    android:textColor="#FFFFFF"
+                    android:textColor="@color/text"
                     android:textSize="13sp" />
             </LinearLayout>
 
@@ -124,7 +124,7 @@
                         android:background="@drawable/dot_black"
                         android:gravity="center"
                         android:text="+"
-                        android:textColor="#FFFFFF"
+                        android:textColor="@color/text"
                         android:textSize="18sp"
                         android:textStyle="bold" />
                 </FrameLayout>
@@ -145,7 +145,7 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:fontFamily="sans-serif-black"
-                    android:textColor="#FFFFFF"
+                    android:textColor="@color/text"
                     android:textSize="20sp" />
 
                 <TextView
@@ -158,7 +158,7 @@
                     android:gravity="center"
                     android:paddingStart="12dp"
                     android:paddingEnd="12dp"
-                    android:textColor="#FFFFFF"
+                    android:textColor="@color/text"
                     android:textSize="12sp" />
             </LinearLayout>
 
@@ -176,7 +176,7 @@
                 android:gravity="center"
                 android:lineSpacingExtra="6dp"
                 android:padding="28dp"
-                android:textColor="#8AFFFFFF"
+                android:textColor="@color/text2"
                 android:textSize="14sp"
                 android:visibility="gone" />
         </LinearLayout>
@@ -187,7 +187,7 @@
         android:id="@+id/bottomNav"
         android:layout_width="match_parent"
         android:layout_height="60dp"
-        android:background="#FF141416"
+        android:background="@color/bar"
         android:gravity="center_vertical"
         android:orientation="horizontal" />
 </LinearLayout>

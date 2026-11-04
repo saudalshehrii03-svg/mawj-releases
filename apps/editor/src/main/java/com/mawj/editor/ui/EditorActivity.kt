@@ -141,7 +141,7 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
             override fun onProgressChanged(sb: android.widget.SeekBar, v: Int, fromUser: Boolean) {
                 if (!fromUser) return
                 val us = project.durationUs * v / 1000
-                player?.seekTo(us / 1000); b.timeline.setPosition(us); updateTime()
+                seekPlayer(us); b.timeline.setPosition(us); updateTime()
             }
             override fun onStartTrackingTouch(sb: android.widget.SeekBar) { player?.pause() }
             override fun onStopTrackingTouch(sb: android.widget.SeekBar) {}
@@ -188,9 +188,17 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
     // ---------- Layout: resizable preview / timeline, full screen ----------
 
     private var fullscreen = false
+    private var fsProgress = 0f
+    private var fsAnim: android.animation.ValueAnimator? = null
     private var muted = false
+    private var seekPending = false
+    private var playFromUs = 0L
+    private var playStartedAt = 0L
+    private val previewShort get() = splitPrefs.getInt("preview_q", 540)
     private var category = ""
     private val splitPrefs by lazy { getSharedPreferences("editor_ui", MODE_PRIVATE) }
+
+    private var detector: android.view.GestureDetector? = null
 
     /** Visible height of the editor panel (it slides over the preview). */
     private var panelV = 0f
@@ -217,23 +225,37 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
 
     private fun contentFrame(): View? = b.playerView.findViewById(androidx.media3.ui.R.id.exo_content_frame)
 
-    /** Fits the video into the part of the preview that the panel doesn't cover. */
+    /**
+     * Places the video: fitted into the part of the preview the panel doesn't cover (normal), or filling the
+     * whole screen (full screen). In between it's interpolated, so entering full screen is a smooth zoom.
+     */
     private fun applyPreviewTransform() {
         val content = contentFrame() ?: return
         val full = b.playerView.height.toFloat()
+        val cw = content.width.toFloat()
         val ch = content.height.toFloat()
-        if (full <= 0f || ch <= 0f || fullscreen) {
-            content.scaleX = 1f; content.scaleY = 1f; content.translationY = 0f
-            return
-        }
+        if (full <= 0f || ch <= 0f || cw <= 0f) return
+        // Normal state
         val covered = (panelV - minPanel()).coerceAtLeast(0f)
         val visible = (full - covered).coerceAtLeast(full * 0.2f)
-        val s = (visible / ch).coerceAtMost(1f)
-        content.pivotX = content.width / 2f
+        val s0 = (visible / ch).coerceAtMost(1f)
+        val ty0 = (visible - ch * s0) / 2f - (full - ch) / 2f
+        // Full screen state (relative to the activity root)
+        val pv = IntArray(2); val rt = IntArray(2)
+        b.playerView.getLocationInWindow(pv); b.root.getLocationInWindow(rt)
+        val absLeft = pv[0] - rt[0] + content.left
+        val absTop = pv[1] - rt[1] + content.top
+        val rw = b.root.width.toFloat(); val rh = b.root.height.toFloat()
+        val s1 = minOf(rw / cw, rh / ch)
+        val tx1 = rw / 2f - (absLeft + cw / 2f)
+        val ty1 = (rh - ch * s1) / 2f - absTop
+        val t = fsProgress
+        content.pivotX = cw / 2f
         content.pivotY = 0f
-        content.scaleX = s
-        content.scaleY = s
-        content.translationY = (visible - ch * s) / 2f - (full - ch) / 2f
+        val sc = s0 + (s1 - s0) * t
+        content.scaleX = sc; content.scaleY = sc
+        content.translationX = tx1 * t
+        content.translationY = ty0 + (ty1 - ty0) * t
     }
 
     @android.annotation.SuppressLint("ClickableViewAccessibility")
@@ -262,10 +284,10 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
             }
             true
         }
-        val detector = android.view.GestureDetector(this, object : android.view.GestureDetector.SimpleOnGestureListener() {
+        detector = android.view.GestureDetector(this, object : android.view.GestureDetector.SimpleOnGestureListener() {
             override fun onDown(e: android.view.MotionEvent): Boolean { startV = panelV; return true }
             override fun onSingleTapConfirmed(e: android.view.MotionEvent): Boolean {
-                if (fullscreen) b.fullControls.visibility = if (b.fullControls.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+                if (fullscreen) b.fullControls.animate().alpha(if (b.fullControls.alpha > 0.5f) 0f else 1f).setDuration(180).start()
                 else togglePlay()
                 return true
             }
@@ -276,8 +298,9 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
                 return true
             }
         })
+        b.root.setOnTouchListener { _, e -> if (fullscreen) detector?.onTouchEvent(e); fullscreen }
         b.playerView.setOnTouchListener { _, e ->
-            detector.onTouchEvent(e)
+            detector?.onTouchEvent(e)
             if ((e.actionMasked == android.view.MotionEvent.ACTION_UP || e.actionMasked == android.view.MotionEvent.ACTION_CANCEL) && !fullscreen) {
                 setPanel(panelV, settle = true)
             }
@@ -285,28 +308,35 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         }
     }
 
+    /** Smooth, GPU-only zoom into / out of full screen (no relayout, so the video never stutters). */
     private fun setFullscreen(on: Boolean) {
-        if (project.clips.isEmpty()) return
+        if (project.clips.isEmpty() || on == fullscreen) return
         fullscreen = on
-        val vis = if (on) View.GONE else View.VISIBLE
-        b.topBar.visibility = vis
-        b.bottomPanel.visibility = vis
-        b.toolsBar.visibility = vis
-        b.fullControls.visibility = if (on) View.VISIBLE else View.GONE
-        (b.previewCard.layoutParams as android.view.ViewGroup.MarginLayoutParams).apply {
-            val m = if (on) 0 else dp(14)
-            marginStart = m; marginEnd = m; topMargin = if (on) 0 else dp(4)
-            bottomMargin = if (on) 0 else dp(150)
-            b.previewCard.layoutParams = this
-        }
-        val ctl = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
+        fsAnim?.cancel()
+        val bars = listOf<View>(b.topBar, b.bottomPanel, b.toolsBar)
         if (on) {
-            ctl.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
-            ctl.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        } else ctl.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
-        applyPreviewTransform()
-        // Redraw the current frame at the new size (matters while paused).
-        b.previewCard.post { player?.let { if (!it.isPlaying) it.seekTo(it.currentPosition) } }
+            b.fullControls.visibility = View.VISIBLE
+            b.stage.translationZ = 8f
+        } else bars.forEach { it.visibility = View.VISIBLE }
+        val from = fsProgress
+        val to = if (on) 1f else 0f
+        fsAnim = android.animation.ValueAnimator.ofFloat(from, to).apply {
+            duration = (380 * kotlin.math.abs(to - from)).toLong().coerceAtLeast(120)
+            interpolator = android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f)
+            addUpdateListener {
+                fsProgress = it.animatedValue as Float
+                applyPreviewTransform()
+                bars.forEach { v -> v.alpha = 1f - fsProgress }
+                b.fullControls.alpha = fsProgress
+            }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    if (fsProgress >= 0.999f) bars.forEach { it.visibility = View.INVISIBLE }
+                    if (fsProgress <= 0.001f) { b.fullControls.visibility = View.GONE; b.stage.translationZ = 0f }
+                }
+            })
+            start()
+        }
         updateTime()
     }
 
@@ -366,7 +396,11 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         val v = project.clips.mapIndexed { i, it ->
             TimelineView.VBlock(project.clipStartUs(i), it.timelineUs, thumbKey(it), it.type == ClipType.IMAGE, it.transition, it.text.isNotBlank())
         }
-        val a = project.audios.map { TimelineView.ABlock(it.startAtUs, it.lengthUs, it.label) }
+        val a = project.audios.map { au ->
+            TimelineView.ABlock(au.startAtUs, au.lengthUs, au.label).also { blk ->
+                blk.beats = au.beats.filter { it in au.trimStartUs..au.trimEndUs }.map { au.startAtUs + it - au.trimStartUs }
+            }
+        }
         b.timeline.setData(v, a)
         b.timeline.selectedClip = selClip
         b.timeline.selectedAudio = selAudio
@@ -392,7 +426,7 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         b.playerView.player = null
         if (project.clips.isEmpty()) { updatePlayIcon(); return }
 
-        val (w, h) = project.aspect.canvas(720)
+        val (w, h) = project.aspect.canvas(previewShort)
         val ready = Bridges.needed(project).mapNotNull { i -> Bridges.cached(this, project, i, w, h, false)?.let { i to it } }.toMap()
         if (ready.size < Bridges.needed(project).size) renderPreviewBridges()
         val composition = try {
@@ -415,9 +449,17 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_READY) seekPending = false
                 if (playbackState == Player.STATE_ENDED) {
+                    p.pause()
+                    b.timeline.setPosition(project.durationUs)
+                    updateTime()
                     updatePlayIcon()
                 }
+            }
+
+            override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+                if (reason == Player.DISCONTINUITY_REASON_SEEK) seekPending = false
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -435,6 +477,7 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         if (muted) p.volume = 0f
         p.prepare()
         p.seekTo(b.timeline.positionUs / 1000)
+        seekPending = true
         player = p
         if (wasPlaying) p.play()
         updatePlayIcon()
@@ -443,7 +486,7 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
     /** Renders missing overlap transitions in the background, then refreshes the preview. */
     private fun renderPreviewBridges() {
         if (bridgeJob?.isActive == true) return
-        val (w, h) = project.aspect.canvas(720)
+        val (w, h) = project.aspect.canvas(previewShort)
         bridgeJob = lifecycleScope.launch {
             b.bridgeStatus.visibility = View.VISIBLE
             var rendered = false
@@ -467,12 +510,24 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
     private val positionLoop = object : Runnable {
         override fun run() {
             val p = player ?: return
-            if (!b.timeline.isUserScrubbing) {
-                b.timeline.setPosition(p.currentPosition * 1000)
-                updateTime()
+            if (!b.timeline.isUserScrubbing && !seekPending) {
+                val pos = p.currentPosition * 1000
+                // Guard: if the player snapped back to the start right after "play", re-apply the seek.
+                if (System.currentTimeMillis() - playStartedAt < 800 && playFromUs > 500_000 && pos < playFromUs - 400_000) {
+                    seekPlayer(playFromUs)
+                } else {
+                    b.timeline.setPosition(pos)
+                    updateTime()
+                }
             }
-            if (p.isPlaying) handler.postDelayed(this, 33)
+            if (p.isPlaying) handler.postDelayed(this, 16)
         }
+    }
+
+    private fun seekPlayer(us: Long) {
+        val p = player ?: return
+        p.seekTo((us / 1000).coerceAtLeast(0))
+        seekPending = true
     }
 
     private fun togglePlay() {
@@ -480,10 +535,12 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         if (p.isPlaying) {
             p.pause()
         } else {
-            if (b.timeline.positionUs >= project.durationUs - 50_000) {
-                p.seekTo(0)
-                b.timeline.setPosition(0)
-            }
+            var from = b.timeline.positionUs
+            if (from >= project.durationUs - 50_000) { from = 0; b.timeline.setPosition(0) }
+            // Always start exactly where the playhead is.
+            if (kotlin.math.abs(p.currentPosition * 1000 - from) > 40_000) seekPlayer(from)
+            playFromUs = from
+            playStartedAt = System.currentTimeMillis()
             p.play()
         }
     }
@@ -513,13 +570,13 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         if (p != null) {
             if (p.isPlaying) p.pause()
             val now = System.currentTimeMillis()
-            if (now - lastSeekAt > 60) { p.seekTo(us / 1000); lastSeekAt = now }
+            if (now - lastSeekAt > 50) { seekPlayer(us); lastSeekAt = now }
         }
         updateTime()
     }
 
     override fun onScrubEnd() {
-        player?.seekTo(b.timeline.positionUs / 1000)
+        seekPlayer(b.timeline.positionUs)
         updateTime()
     }
 
@@ -650,7 +707,11 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
                 }
                 if (selClip < project.clips.lastIndex) tool(R.drawable.i_sparkles, L.t("انتقال", "Transition"), accent = true) { showTransition(selClip) }
                 tool(R.drawable.i_sliders, L.t("فلاتر", "Filters")) { filters(clip) }
+                tool(R.drawable.i_wand, L.t("حركة", "Animate")) { animations(clip) }
                 tool(R.drawable.i_text, L.t("نص", "Text")) { textClip(clip) }
+                tool(R.drawable.i_sparkles, L.t("تحسين ✨", "Enhance ✨")) { autoEnhance(listOf(clip)) }
+                tool(R.drawable.i_fit, L.t("تأطير ذكي", "Reframe")) { smartReframe(listOf(clip)) }
+                if (clip.type == ClipType.VIDEO) tool(R.drawable.i_scissors, L.t("حذف السكتات", "Cut silences")) { removeSilences(listOf(selClip)) }
                 tool(R.drawable.i_rotate, L.t("تدوير", "Rotate")) { edit { clip.rotation = (clip.rotation + 90) % 360 }; chip(L.t("تم التدوير", "Rotated")) }
                 tool(R.drawable.i_flip, L.t("قلب", "Flip")) { edit { clip.mirror = !clip.mirror }; chip(L.t("تم القلب", "Flipped")) }
                 tool(R.drawable.i_fit, if (clip.fill) L.t("احتواء", "Fit") else L.t("ملء الشاشة", "Fill")) { edit { clip.fill = !clip.fill } }
@@ -667,6 +728,7 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
                 tool(R.drawable.i_split, L.t("تقسيم", "Split")) { splitAudio() }
                 tool(R.drawable.i_trim, L.t("قص", "Trim")) { trimAudio(audio) }
                 tool(R.drawable.i_pin, L.t("نقل هنا", "Move here")) { edit { audio.startAtUs = b.timeline.positionUs } }
+                tool(R.drawable.i_music, L.t("مزامنة الإيقاع", "Beat sync"), accent = true) { beatSync() }
                 tool(R.drawable.i_copy, L.t("تكرار", "Duplicate")) { duplicateAudio(audio) }
                 tool(R.drawable.i_trash, L.t("حذف", "Delete")) { edit { project.audios.removeAt(selAudio); selAudio = -1 }; chip(L.t("تم حذف الصوت", "Audio deleted")) }
             }
@@ -694,8 +756,14 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
                 tool(R.drawable.i_sparkles, L.t("انتقالات", "Transitions")) {
                     if (project.clips.size > 1) showTransition(-1) else toast(L.t("أضف مقطعين على الأقل", "Add at least two clips"))
                 }
+                tool(R.drawable.i_wand, L.t("ذكاء ✨", "AI ✨"), accent = true) {
+                    if (project.clips.isEmpty()) launchMediaPicker() else aiSheet()
+                }
                 tool(R.drawable.i_sliders, L.t("فلاتر", "Filters")) {
                     val i = clipUnderPlayhead(); if (i >= 0) { buildTools(); filters(project.clips[i]) }
+                }
+                tool(R.drawable.i_layers, L.t("حركة", "Animate")) {
+                    val i = clipUnderPlayhead(); if (i >= 0) { buildTools(); animations(project.clips[i]) }
                 }
                 tool(R.drawable.i_ratio, L.t("النسبة", "Ratio")) { aspectSheet() }
                 tool(R.drawable.i_film, L.t("إضافة", "Add")) { launchMediaPicker() }
@@ -712,6 +780,13 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         sheet.option(R.drawable.i_ratio, L.t("نسبة الأبعاد", "Aspect ratio"), project.aspect.label, false) { sheet.dismiss(); aspectSheet() }
         if (project.clips.size > 1) sheet.option(R.drawable.i_sparkles, L.t("انتقال لكل المقاطع", "Transition for all clips"), L.t("طبّق نفس الانتقال على الكل", "Apply one transition everywhere"), false) { sheet.dismiss(); showTransition(-1) }
         sheet.option(R.drawable.i_send, L.t("تصدير تيك توك HD", "TikTok HD export"), "1080×1920 • H.264", false) { sheet.dismiss(); showExportWith(true) }
+        val qs = listOf(540, 720, 1080)
+        sheet.chips(L.t("جودة المعاينة (الأقل = أنعم)", "Preview quality (lower = smoother)"),
+            listOf(L.t("سلسة 540p", "Smooth 540p"), "720p", "1080p"), qs.indexOf(previewShort).coerceAtLeast(0)) { i ->
+            splitPrefs.edit().putInt("preview_q", qs[i]).apply()
+            rebuildPreview()
+            chip(L.t("جودة المعاينة: ", "Preview: ") + qs[i] + "p")
+        }
         sheet.show()
     }
 
@@ -743,8 +818,8 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
                         ProjectStore.Imported.Kind.AUDIO -> project.audios += AudioClip(
                             file = m.file, label = m.label, sourceDurationUs = m.durationUs, startAtUs = b.timeline.positionUs,
                         )
-                        ProjectStore.Imported.Kind.IMAGE -> project.clips.add(insertAt++, Clip(file = m.file, type = ClipType.IMAGE, sourceDurationUs = m.durationUs))
-                        ProjectStore.Imported.Kind.VIDEO -> project.clips.add(insertAt++, Clip(file = m.file, type = ClipType.VIDEO, sourceDurationUs = m.durationUs))
+                        ProjectStore.Imported.Kind.IMAGE -> project.clips.add(insertAt++, Clip(file = m.file, type = ClipType.IMAGE, sourceDurationUs = m.durationUs, srcW = m.w, srcH = m.h))
+                        ProjectStore.Imported.Kind.VIDEO -> project.clips.add(insertAt++, Clip(file = m.file, type = ClipType.VIDEO, sourceDurationUs = m.durationUs, srcW = m.w, srcH = m.h))
                     }
                 }
             }
@@ -881,25 +956,191 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
     }
 
     private fun filters(c: Clip) {
-        val sheet = Sheet(this, L.t("فلاتر وتعديل الألوان", "Filters & color"))
+        val sheet = Sheet(this, L.t("فلاتر وتلوين", "Filters & color"), L.t("تلوين سينمائي احترافي — يطبق في المعاينة والتصدير", "Pro color grading — applied in preview and export"))
         val pct: (Float) -> String = { "${(it * 100).toInt()}" }
-        val presets = listOf(L.t("بدون", "None") to floatArrayOf(0f, 0f, 0f), L.t("حيوي", "Vivid") to floatArrayOf(0.03f, 0.15f, 0.35f),
-            L.t("سينمائي", "Cinematic") to floatArrayOf(-0.05f, 0.25f, -0.15f), L.t("أبيض وأسود", "Black & white") to floatArrayOf(0f, 0.15f, -1f),
-            L.t("ناعم", "Soft") to floatArrayOf(0.08f, -0.15f, -0.1f), L.t("درامي", "Dramatic") to floatArrayOf(-0.1f, 0.4f, 0.1f))
-        val br = arrayOfNulls<com.google.android.material.slider.Slider>(3)
-        sheet.chips(L.t("جاهزة", "Presets"), presets.map { it.first }, -1) { i ->
-            val v = presets[i].second
-            br[0]?.value = v[0]; br[1]?.value = v[1]; br[2]?.value = v[2]
-            edit { c.brightness = v[0]; c.contrast = v[1]; c.saturation = v[2] }
+        val grades = com.mawj.editor.engine.ColorGrade.presets
+        sheet.chips(L.t("الفلتر", "Look"), listOf(L.t("بدون", "None")) + grades.map { it.label },
+            grades.indexOfFirst { it.id == c.grade } + 1) { i ->
+            edit { c.grade = if (i == 0) "" else grades[i - 1].id }
         }
-        br[0] = sheet.slider(L.t("السطوع", "Brightness"), -0.5f, 0.5f, c.brightness, pct, 0.01f) { v -> edit { c.brightness = v } }
-        br[1] = sheet.slider(L.t("التباين", "Contrast"), -0.5f, 0.6f, c.contrast, pct, 0.01f) { v -> edit { c.contrast = v } }
-        br[2] = sheet.slider(L.t("التشبّع", "Saturation"), -1f, 1f, c.saturation, pct, 0.01f) { v -> edit { c.saturation = v } }
+        sheet.slider(L.t("قوة الفلتر", "Look strength"), 0f, 1f, c.gradeAmount, pct, 0.05f) { v -> edit { c.gradeAmount = v } }
+        sheet.slider(L.t("الحرارة", "Temperature"), -1f, 1f, c.temperature, pct, 0.05f) { v -> edit { c.temperature = v } }
+        sheet.slider(L.t("الصبغة", "Tint"), -1f, 1f, c.tint, pct, 0.05f) { v -> edit { c.tint = v } }
+        sheet.slider(L.t("السطوع", "Brightness"), -0.5f, 0.5f, c.brightness, pct, 0.01f) { v -> edit { c.brightness = v } }
+        sheet.slider(L.t("التباين", "Contrast"), -0.5f, 0.6f, c.contrast, pct, 0.01f) { v -> edit { c.contrast = v } }
+        sheet.slider(L.t("التشبّع", "Saturation"), -1f, 1f, c.saturation, pct, 0.01f) { v -> edit { c.saturation = v } }
+        sheet.slider(L.t("الحدّة والتفاصيل", "Detail / sharpen"), 0f, 1f, c.sharpen, pct, 0.05f) { v -> edit { c.sharpen = v } }
+        sheet.button(L.t("✨ تحسين تلقائي بالذكاء", "✨ Smart auto-enhance")) { sheet.dismiss(); autoEnhance(listOf(c)) }
         sheet.button(L.t("تطبيق على كل المقاطع", "Apply to all clips"), outlined = true) {
-            edit { project.clips.forEach { it.brightness = c.brightness; it.contrast = c.contrast; it.saturation = c.saturation } }
+            edit {
+                project.clips.forEach {
+                    it.grade = c.grade; it.gradeAmount = c.gradeAmount; it.temperature = c.temperature; it.tint = c.tint
+                    it.brightness = c.brightness; it.contrast = c.contrast; it.saturation = c.saturation; it.sharpen = c.sharpen
+                }
+            }
+            sheet.dismiss(); chip(L.t("تم تطبيق التلوين على الكل", "Grade applied to all clips"))
+        }
+        sheet.button(L.t("إعادة ضبط", "Reset"), outlined = true) {
+            edit { c.grade = ""; c.gradeAmount = 1f; c.temperature = 0f; c.tint = 0f; c.brightness = 0f; c.contrast = 0f; c.saturation = 0f; c.sharpen = 0f }
             sheet.dismiss()
         }
         sheet.show()
+    }
+
+    private fun animations(c: Clip) {
+        val sheet = Sheet(this, L.t("حركة المقطع", "Clip animation"), L.t("دخول • خروج • حركة مستمرة", "In • Out • Loop"))
+        val anims = com.mawj.editor.engine.ClipAnimations
+        val none = L.t("بدون", "None")
+        sheet.chips(L.t("دخول", "In"), listOf(none) + anims.inAnims.map { it.label }, anims.inAnims.indexOfFirst { it.id == c.animIn } + 1) { i ->
+            edit { c.animIn = if (i == 0) "" else anims.inAnims[i - 1].id }
+        }
+        sheet.chips(L.t("خروج", "Out"), listOf(none) + anims.outAnims.map { it.label }, anims.outAnims.indexOfFirst { it.id == c.animOut } + 1) { i ->
+            edit { c.animOut = if (i == 0) "" else anims.outAnims[i - 1].id }
+        }
+        sheet.chips(L.t("حركة مستمرة", "Loop"), listOf(none) + anims.loopAnims.map { it.label }, anims.loopAnims.indexOfFirst { it.id == c.animLoop } + 1) { i ->
+            edit { c.animLoop = if (i == 0) "" else anims.loopAnims[i - 1].id }
+        }
+        sheet.note(L.t("💡 «كين بيرنز» و«تقريب بطيء» تعطي الصور الثابتة حياة، و«نبض» ممتاز مع الأغاني.", "💡 Ken Burns and Slow zoom bring photos to life; Pulse works great with music."))
+        sheet.show()
+    }
+
+    // ---------- AI tools (on-device) ----------
+
+    private fun aiSheet() {
+        val sheet = Sheet(this, L.t("أدوات الذكاء ✨", "AI tools ✨"), L.t("تشتغل على جوالك بدون نت", "Runs on your phone, offline"))
+        sheet.option(R.drawable.i_wand, L.t("تحسين تلقائي للألوان", "Auto-enhance colors"), L.t("يحلل الإضاءة والألوان ويضبطها لكل مقطع", "Analyzes light & color and fixes every clip"), false) {
+            sheet.dismiss(); autoEnhance(project.clips.toList())
+        }
+        sheet.option(R.drawable.i_scissors, L.t("حذف السكتات", "Remove silences"), L.t("يقص الفراغات الصامتة تلقائياً (ممتاز لمقاطع الكلام)", "Cuts silent pauses automatically (great for talking videos)"), false) {
+            sheet.dismiss(); removeSilences(project.clips.indices.filter { project.clips[it].type == ClipType.VIDEO })
+        }
+        sheet.option(R.drawable.i_music, L.t("مزامنة على الإيقاع", "Beat sync"), L.t("يكشف إيقاع الأغنية ويقص المقاطع عليه", "Detects the song's beats and cuts clips to them"), false) {
+            sheet.dismiss(); beatSync()
+        }
+        sheet.option(R.drawable.i_fit, L.t("إعادة تأطير ذكي", "Smart reframe"), L.t("يتبع الوجه ويملأ الإطار بأي نسبة (16:9 ← 9:16)", "Follows faces to fill any ratio (16:9 → 9:16)"), false) {
+            sheet.dismiss(); smartReframe(project.clips.toList())
+        }
+        sheet.option(R.drawable.i_sparkles, L.t("تكبير 4K مع تحسين التفاصيل", "4K upscale + detail"), L.t("من التصدير ← مخصص ← 4K + «تحسين التفاصيل»", "Export → Custom → 4K + “Detail enhance”"), false) {
+            sheet.dismiss(); showExportWith(false)
+        }
+        sheet.show()
+    }
+
+    private fun clipRange(c: Clip) = c.trimStartUs to c.trimEndUs
+
+    private fun autoEnhance(clips: List<Clip>) {
+        if (clips.isEmpty()) return
+        val (dialog, _) = busyDialog(L.t("جاري تحليل الألوان…", "Analyzing colors…"))
+        lifecycleScope.launch {
+            val results = withContext(Dispatchers.IO) {
+                clips.map { c ->
+                    val (a, z) = clipRange(c)
+                    runCatching { com.mawj.editor.engine.Analysis.autoEnhance(store.mediaFile(project.id, c.file), c.type == ClipType.IMAGE, a, z) }.getOrNull()
+                }
+            }
+            dialog.dismiss()
+            edit {
+                clips.forEachIndexed { k, c -> results[k]?.let { r -> c.brightness = r[0]; c.contrast = r[1]; c.saturation = r[2] } }
+            }
+            chip(L.t("تم التحسين التلقائي ✨", "Auto-enhanced ✨"))
+        }
+    }
+
+    private fun removeSilences(indices: List<Int>) {
+        if (indices.isEmpty()) return toast(L.t("ما فيه مقاطع فيديو", "No video clips"))
+        val (dialog, _) = busyDialog(L.t("جاري البحث عن السكتات…", "Finding silences…"))
+        lifecycleScope.launch {
+            val segs = withContext(Dispatchers.IO) {
+                indices.associateWith { i ->
+                    val c = project.clips[i]
+                    runCatching {
+                        com.mawj.editor.engine.Analysis.keepSegments(store.mediaFile(project.id, c.file), c.trimStartUs, c.trimEndUs)
+                    }.getOrNull()
+                }
+            }
+            dialog.dismiss()
+            var removedUs = 0L
+            edit {
+                for (i in indices.sortedDescending()) {
+                    val c = project.clips[i]
+                    val keep = segs[i] ?: continue
+                    if (keep.isEmpty() || (keep.size == 1 && keep[0].first <= c.trimStartUs + 50_000 && keep[0].last >= c.trimEndUs - 50_000)) continue
+                    removedUs += (c.trimEndUs - c.trimStartUs) - keep.sumOf { it.last - it.first }
+                    val parts = keep.mapIndexed { k, r ->
+                        c.copy(id = newId(), trimStartUs = r.first, trimEndUs = r.last,
+                            transition = if (k == keep.lastIndex) c.transition else Transition.NONE)
+                    }
+                    project.clips.removeAt(i)
+                    project.clips.addAll(i, parts)
+                }
+                selClip = -1
+            }
+            chip(if (removedUs > 0) L.t("تم حذف ${"%.1f".format(Locale.US, removedUs / 1e6)}ث من السكتات", "Removed ${"%.1f".format(Locale.US, removedUs / 1e6)}s of silence")
+                 else L.t("ما لقينا سكتات طويلة", "No long silences found"))
+        }
+    }
+
+    private fun beatSync() {
+        val a = project.audios.getOrNull(selAudio) ?: project.audios.firstOrNull()
+            ?: return toast(L.t("أضف أغنية أول من «صوت»", "Add a song first from “Audio”"))
+        if (project.clips.isEmpty()) return
+        val (dialog, _) = busyDialog(L.t("جاري كشف الإيقاع…", "Detecting beats…"))
+        lifecycleScope.launch {
+            val beats = withContext(Dispatchers.IO) {
+                runCatching { com.mawj.editor.engine.Analysis.beats(store.mediaFile(project.id, a.file), a.trimStartUs, a.trimEndUs) }.getOrDefault(emptyList())
+            }
+            dialog.dismiss()
+            if (beats.size < 2) return@launch toast(L.t("ما قدرنا نكشف إيقاع واضح", "Couldn't find a clear beat"))
+            // Beat times on the timeline, keeping cuts at least 0.4 s apart.
+            val times = ArrayList<Long>()
+            for (bt in beats) {
+                val t = a.startAtUs + (bt - a.trimStartUs)
+                if (t > 300_000 && (times.isEmpty() || t - times.last() >= 400_000)) times += t
+            }
+            edit {
+                a.beats = beats
+                var start = 0L
+                project.clips.forEachIndexed { i, c ->
+                    val cut = times.firstOrNull { it > start + 300_000 } ?: return@forEachIndexed
+                    val want = cut - start
+                    if (c.type == ClipType.IMAGE) {
+                        c.sourceDurationUs = want; c.trimStartUs = 0; c.trimEndUs = want
+                    } else {
+                        val maxLen = ((c.sourceDurationUs - c.trimStartUs) / c.speed).toLong()
+                        val len = minOf(want, maxLen)
+                        c.trimEndUs = c.trimStartUs + (len * c.speed).toLong()
+                    }
+                    start = project.clipStartUs(i) + project.clips[i].timelineUs - project.overlapUs(i)
+                }
+            }
+            chip(L.t("تمت المزامنة على ${times.size} ضربة 🎵", "Synced to ${times.size} beats 🎵"))
+        }
+    }
+
+    private fun smartReframe(clips: List<Clip>) {
+        if (clips.isEmpty()) return
+        val (dialog, _) = busyDialog(L.t("جاري تتبع الوجوه…", "Tracking faces…"))
+        lifecycleScope.launch {
+            val found = withContext(Dispatchers.IO) {
+                clips.map { c ->
+                    val f = store.mediaFile(project.id, c.file)
+                    val img = c.type == ClipType.IMAGE
+                    val size = runCatching { com.mawj.editor.engine.Analysis.size(f, img) }.getOrDefault(0 to 0)
+                    val focus = runCatching { com.mawj.editor.engine.Analysis.faceFocus(f, img, c.trimStartUs, c.trimEndUs) }.getOrNull()
+                    Triple(size, focus, c)
+                }
+            }
+            dialog.dismiss()
+            var faces = 0
+            edit {
+                found.forEach { (size, focus, c) ->
+                    c.srcW = size.first; c.srcH = size.second
+                    c.fill = true
+                    if (focus != null) { c.focusX = focus.x; c.focusY = focus.y; faces++ } else { c.focusX = 0.5f; c.focusY = 0.5f }
+                }
+            }
+            chip(L.t("تم التأطير الذكي ($faces وجه)", "Smart reframe done ($faces with faces)"))
+        }
     }
 
     private fun textClip(c: Clip) {
@@ -1010,7 +1251,7 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
             if (!all && index + 1 < project.clips.size) {
                 val cut = project.clipStartUs(index + 1)
                 val pos = (cut - 300_000).coerceAtLeast(0)
-                b.timeline.setPosition(pos); player?.seekTo(pos / 1000); updateTime()
+                b.timeline.setPosition(pos); seekPlayer(pos); updateTime()
             }
         }
         if (!all) sheet.button(L.t("تطبيق على كل المقاطع", "Apply to all clips"), outlined = true) {
@@ -1112,9 +1353,11 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
             val sheet = Sheet(this, L.t("تيك توك HD", "TikTok HD"), L.t("إعدادات موج HD الجاهزة لأعلى جودة على تيك توك", "Mawj HD presets for the best quality on TikTok"))
             sheet.note(L.t("✅ دقة 1080p بالضبط (اللي يعرضها تيك توك)\n✅ ترميز H.264 بمعدل بت عالي جداً\n✅ تحويل HDR إلى SDR عشان الألوان ما تبهت\n✅ بعد الحفظ نوديك لتيك توك خطوة بخطوة", "✅ Exactly 1080p (what TikTok displays)\n✅ H.264 at a very high bitrate\n✅ HDR converted to SDR so colors don't wash out\n✅ After saving, we guide you to TikTok step by step"))
             if (project.aspect != Aspect.R9_16) sheet.note(L.t("⚠️ نسبة المشروع ${project.aspect.label} — الأفضل للتيك توك 9:16 (غيرها من أداة «النسبة»).", "⚠️ Project ratio is ${project.aspect.label} — 9:16 is best for TikTok (change it with “Ratio”)."))
+            var fps = 0f
+            sheet.chips(L.t("الفريمات", "Frame rate"), listOf(L.t("الأصلي", "Original"), "30", "60"), 0) { fps = listOf(0f, 30f, 60f)[it] }
             sheet.button(L.t("صدّر لتيك توك", "Export for TikTok")) {
                 sheet.dismiss()
-                export(1080, 0.5, false, true)
+                export(1080, 0.5, false, true, fps, 0.2f)
             }
             sheet.show()
             return
@@ -1127,14 +1370,22 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         sheet.chips(L.t("الدقة", "Resolution"), listOf("720p", "1080p", "2K", "4K"), r) { r = it }
         sheet.chips(L.t("الجودة", "Quality"), listOf(L.t("عالية", "High"), L.t("قصوى", "Max"), L.t("استديو", "Studio")), quality) { quality = it }
         sheet.chips(L.t("الترميز", "Codec"), listOf(L.t("H.264 (متوافق)", "H.264 (compatible)"), L.t("H.265 (أصغر)", "H.265 (smaller)")), 0) { hevc = it == 1 }
+        var fps = 0f
+        sheet.chips(L.t("الفريمات", "Frame rate"), listOf(L.t("الأصلي", "Original"), "24", "25", "30", "50", "60"), 0) {
+            fps = listOf(0f, 24f, 25f, 30f, 50f, 60f)[it]
+        }
+        var detail = 0f
+        sheet.toggle(L.t("تحسين التفاصيل (حدّة ذكية عند التكبير)", "Detail enhance (smart sharpening for upscales)"), false) { detail = if (it) 0.35f else 0f }
+        sheet.note(L.t("💡 الفريمات «الأصلي» يحافظ على فريمات التصوير (مثلاً 60). اختيار رقم أقل يخفّضها. ما نقدر نزيد فوق فريمات التصوير بدون تشويه.",
+            "💡 “Original” keeps the camera frame rate (e.g. 60). A lower number reduces it. We can't go above the source rate without artifacts."))
         sheet.button(L.t("تصدير وحفظ", "Export & save")) {
             sheet.dismiss()
-            export(res[r], listOf(0.25, 0.4, 0.6)[quality], hevc, false)
+            export(res[r], listOf(0.25, 0.4, 0.6)[quality], hevc, false, fps, detail)
         }
         sheet.show()
     }
 
-    private fun export(shortSide: Int, bpp: Double, hevc: Boolean, tiktok: Boolean) {
+    private fun export(shortSide: Int, bpp: Double, hevc: Boolean, tiktok: Boolean, fps: Float = 0f, detail: Float = 0f) {
         player?.pause()
         player?.release(); player = null
         b.playerView.player = null
@@ -1156,7 +1407,9 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         Glass.style(dialog)
 
         val (w, h) = project.aspect.canvas(shortSide)
-        val bitrate = (w.toDouble() * h * 30 * bpp).toLong().coerceIn(8_000_000, 150_000_000).toInt()
+        val srcFps = sourceFps()
+        val outFps = if (fps > 0f) minOf(fps, srcFps) else srcFps
+        val bitrate = (w.toDouble() * h * outFps.coerceIn(24f, 60f) * bpp).toLong().coerceIn(8_000_000, 160_000_000).toInt()
         val out = File(cacheDir, "export.mp4").apply { delete() }
         exportJob = lifecycleScope.launch {
             try {
@@ -1170,7 +1423,8 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
                 }
                 if (bridges.size < needed.size) toast(L.t("بعض الانتقالات ما تجهزت: ", "Some transitions failed: ") + Bridges.lastError)
                 // 2) Export the timeline.
-                val comp = CompositionFactory.build(this@EditorActivity, store, project, BuildOptions(w, h, true, bridges = bridges))
+                val comp = CompositionFactory.build(this@EditorActivity, store, project,
+                    BuildOptions(w, h, true, bridges = bridges, maxFps = if (fps > 0f && fps < srcFps - 0.5f) fps else 0f, sharpen = detail))
                 MediaJobs.exportVideo(this@EditorActivity, comp, bitrate, out, hevc) { p ->
                     bar.setProgressCompat(p, true); label.text = "$p%"
                 }
@@ -1195,6 +1449,26 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
                 rebuildPreview()
             }
         }
+    }
+
+    /** Highest frame rate among the project's video clips (30 if unknown). */
+    private fun sourceFps(): Float {
+        var best = 0f
+        for (c in project.clips) {
+            if (c.type != ClipType.VIDEO) continue
+            val ex = android.media.MediaExtractor()
+            runCatching {
+                ex.setDataSource(store.mediaFile(project.id, c.file).absolutePath)
+                for (t in 0 until ex.trackCount) {
+                    val f = ex.getTrackFormat(t)
+                    if (f.getString(android.media.MediaFormat.KEY_MIME)?.startsWith("video/") == true && f.containsKey(android.media.MediaFormat.KEY_FRAME_RATE)) {
+                        best = maxOf(best, f.getNumber(android.media.MediaFormat.KEY_FRAME_RATE)?.toFloat() ?: 0f)
+                    }
+                }
+            }
+            ex.release()
+        }
+        return if (best > 1f) best else 30f
     }
 
     private fun shareIntent(uri: Uri) = Intent(Intent.ACTION_SEND).apply {

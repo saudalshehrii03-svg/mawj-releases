@@ -40,7 +40,10 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
     }
 
     data class VBlock(val startUs: Long, val durUs: Long, val key: String, val isImage: Boolean, val transition: Transition, val hasText: Boolean)
-    data class ABlock(val startUs: Long, val durUs: Long, val label: String, var lane: Int = 0)
+    data class ABlock(val startUs: Long, val durUs: Long, val label: String, var lane: Int = 0) {
+        /** Beat markers on the timeline (absolute µs). */
+        var beats: List<Long> = emptyList()
+    }
 
     var listener: Listener? = null
     var thumbProvider: (String) -> Bitmap? = { null }
@@ -213,6 +216,13 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
             if (rect.right < 0 || rect.left > width) return@forEachIndexed
             paint.color = if (i == dragAudio) 0xFF7E5BE0.toInt() else 0xFF4B3A8C.toInt()
             canvas.drawRoundRect(rect, 6 * d, 6 * d, paint)
+            if (a.beats.isNotEmpty() && i != dragAudio) {
+                paint.color = 0xFFF26B2A.toInt()
+                for (bt in a.beats) {
+                    val bx = x(bt)
+                    if (bx in rect.left..rect.right) canvas.drawCircle(bx, rect.bottom - 4 * d, 2.2f * d, paint)
+                }
+            }
             canvas.save()
             canvas.clipRect(rect)
             canvas.drawText("♪ " + a.label, rect.left + 6 * d, rect.centerY() + 4 * d, text)

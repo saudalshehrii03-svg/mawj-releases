@@ -79,6 +79,23 @@ data class Clip(
     var textScale: Float = 1f,
     /** Font file (inside the project's media folder) for the on-video text; empty = default. */
     var textFont: String = "",
+    /** Color grade preset id (see ColorGrade) and its strength 0..1. */
+    var grade: String = "",
+    var gradeAmount: Float = 1f,
+    var temperature: Float = 0f,
+    var tint: Float = 0f,
+    /** Detail / sharpening 0..1. */
+    var sharpen: Float = 0f,
+    /** Animations: in, out and loop preset ids ("" = none). */
+    var animIn: String = "",
+    var animOut: String = "",
+    var animLoop: String = "",
+    /** Smart reframe focus point 0..1 (-1 = centered). Used when the clip fills the frame. */
+    var focusX: Float = -1f,
+    var focusY: Float = -1f,
+    /** Display size of the source (after its own rotation metadata). */
+    var srcW: Int = 0,
+    var srcH: Int = 0,
 ) {
     /** Duration of this clip on the output timeline. */
     val timelineUs: Long get() = ((trimEndUs - trimStartUs) / speed).toLong().coerceAtLeast(1)
@@ -91,6 +108,9 @@ data class Clip(
         put("br", brightness.toDouble()); put("co", contrast.toDouble()); put("sa", saturation.toDouble())
         put("rot", rotation); put("mir", mirror); put("fill", fill)
         put("text", text); put("tpos", textPos.name); put("tcol", textColor); put("tsc", textScale.toDouble()); put("tfont", textFont)
+        put("grade", grade); put("gamt", gradeAmount.toDouble()); put("temp", temperature.toDouble()); put("tint", tint.toDouble())
+        put("sharp", sharpen.toDouble()); put("ain", animIn); put("aout", animOut); put("aloop", animLoop)
+        put("fx", focusX.toDouble()); put("fy", focusY.toDouble()); put("sw", srcW); put("sh", srcH)
     }
 
     companion object {
@@ -118,6 +138,18 @@ data class Clip(
                 textColor = o.optInt("tcol", 0xFFFFFFFF.toInt()),
                 textScale = o.optDouble("tsc", 1.0).toFloat(),
                 textFont = o.optString("tfont", ""),
+                grade = o.optString("grade", ""),
+                gradeAmount = o.optDouble("gamt", 1.0).toFloat(),
+                temperature = o.optDouble("temp", 0.0).toFloat(),
+                tint = o.optDouble("tint", 0.0).toFloat(),
+                sharpen = o.optDouble("sharp", 0.0).toFloat(),
+                animIn = o.optString("ain", ""),
+                animOut = o.optString("aout", ""),
+                animLoop = o.optString("aloop", ""),
+                focusX = o.optDouble("fx", -1.0).toFloat(),
+                focusY = o.optDouble("fy", -1.0).toFloat(),
+                srcW = o.optInt("sw", 0),
+                srcH = o.optInt("sh", 0),
             )
         }
     }
@@ -134,6 +166,8 @@ data class AudioClip(
     var volume: Float = 1f,
     var fadeInUs: Long = 0,
     var fadeOutUs: Long = 0,
+    /** Detected beats, in source time (µs). */
+    var beats: List<Long> = emptyList(),
 ) {
     val lengthUs: Long get() = (trimEndUs - trimStartUs).coerceAtLeast(1)
 
@@ -141,6 +175,7 @@ data class AudioClip(
         put("id", id); put("file", file); put("label", label); put("src", sourceDurationUs)
         put("ts", trimStartUs); put("te", trimEndUs); put("at", startAtUs)
         put("vol", volume.toDouble()); put("fi", fadeInUs); put("fo", fadeOutUs)
+        put("beats", JSONArray().apply { beats.forEach { put(it) } })
     }
 
     companion object {
@@ -157,6 +192,7 @@ data class AudioClip(
                 volume = o.optDouble("vol", 1.0).toFloat(),
                 fadeInUs = o.optLong("fi", 0),
                 fadeOutUs = o.optLong("fo", 0),
+                beats = o.optJSONArray("beats")?.let { a -> (0 until a.length()).map { a.getLong(it) } } ?: emptyList(),
             )
         }
     }

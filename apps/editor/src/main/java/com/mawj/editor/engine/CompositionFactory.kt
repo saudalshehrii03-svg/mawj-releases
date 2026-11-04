@@ -50,6 +50,10 @@ class BuildOptions(
     val enableEffects: Boolean = true,
     /** Pre-rendered overlap transitions, keyed by the index of the outgoing clip. */
     val bridges: Map<Int, File> = emptyMap(),
+    /** Output frame rate cap (0 = keep the source frame rate). */
+    val maxFps: Float = 0f,
+    /** Extra global sharpening (export "detail enhance"), 0..1. */
+    val sharpen: Float = 0f,
 )
 
 @OptIn(UnstableApi::class)
@@ -178,6 +182,9 @@ object CompositionFactory {
                 ).build()
         }
 
+        if (c.type == ClipType.VIDEO && opt.maxFps > 0f) {
+            videoFx += androidx.media3.effect.FrameDropEffect.createDefaultFrameDropEffect(opt.maxFps)
+        }
         if (c.type == ClipType.VIDEO && opt.enableSpeed && abs(c.speed - 1f) > 0.01f) {
             val pair = Effects.createExperimentalSpeedChangingEffect(ConstantSpeed(c.speed))
             audioFx += pair.first
@@ -191,6 +198,7 @@ object CompositionFactory {
                 .setScale(if (c.mirror) -1f else 1f, 1f)
                 .build()
         }
+        if (c.fill && c.focusX >= 0f && c.srcW > 0 && c.srcH > 0) reframeCrop(c, opt)?.let { videoFx += it }
         videoFx += Presentation.createForWidthAndHeight(
             opt.canvasW, opt.canvasH,
             if (c.fill) Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP else Presentation.LAYOUT_SCALE_TO_FIT,
@@ -201,7 +209,17 @@ object CompositionFactory {
             if (abs(c.saturation) > 0.01f) {
                 videoFx += HslAdjustment.Builder().adjustSaturation(c.saturation.coerceIn(-1f, 1f) * 100f).build()
             }
+            if (ColorGrade.active(c.grade, c.temperature, c.tint)) {
+                val gm = ColorGrade.matrix(c.grade, c.gradeAmount, c.temperature, c.tint)
+                videoFx += androidx.media3.effect.RgbMatrix { _, _ -> gm }
+            }
+            val sharp = (c.sharpen + opt.sharpen).coerceAtMost(1f)
+            if (sharp > 0.01f) videoFx += SharpenEffect(sharp)
             if (c.text.isNotBlank()) videoFx += textEffect(c, opt, store, project)
+            if (plan != null && ClipAnimations.active(c.animIn, c.animOut, c.animLoop)) {
+                videoFx += ClipAnimations.matrix(plan.clock, c.animIn, c.animOut, c.animLoop)
+                if (c.animIn == "fade" || c.animOut == "fade") videoFx += ClipAnimations.fade(plan.clock, c.animIn, c.animOut)
+            }
             if (plan != null && plan.active) {
                 videoFx += TransitionEffects.matrix(plan)
                 videoFx += TransitionEffects.color(plan)
@@ -214,6 +232,26 @@ object CompositionFactory {
         if (c.type == ClipType.IMAGE) b.setDurationUs(lenUs.coerceAtLeast(40_000)).setFrameRate(30)
         else b.setDurationUs(c.sourceDurationUs)
         return b.build()
+    }
+
+    /** Crop window (in NDC) matching the canvas aspect, centred on the smart-reframe focus point. */
+    private fun reframeCrop(c: Clip, opt: BuildOptions): androidx.media3.effect.Crop? {
+        val swap = c.rotation == 90 || c.rotation == 270
+        val w = (if (swap) c.srcH else c.srcW).toFloat()
+        val h = (if (swap) c.srcW else c.srcH).toFloat()
+        val src = w / h
+        val dst = opt.canvasW.toFloat() / opt.canvasH
+        return if (src > dst + 0.01f) {
+            val cw = 2f * dst / src
+            val cx = c.focusX * 2f - 1f
+            val left = (cx - cw / 2).coerceIn(-1f, 1f - cw)
+            androidx.media3.effect.Crop(left, left + cw, -1f, 1f)
+        } else if (src < dst - 0.01f) {
+            val ch = 2f * src / dst
+            val cy = 1f - (if (c.focusY < 0f) 0.5f else c.focusY) * 2f
+            val bottom = (cy - ch / 2).coerceIn(-1f, 1f - ch)
+            androidx.media3.effect.Crop(-1f, 1f, bottom, bottom + ch)
+        } else null
     }
 
     private fun bridgeItem(file: File, durUs: Long, opt: BuildOptions): EditedMediaItem {

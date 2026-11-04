@@ -72,6 +72,8 @@ class ProjectStore(context: Context) {
         val kind: Kind,
         val durationUs: Long,
         val label: String,
+        val w: Int = 0,
+        val h: Int = 0,
     ) {
         enum class Kind { VIDEO, IMAGE, AUDIO }
     }
@@ -100,15 +102,20 @@ class ProjectStore(context: Context) {
             val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeFile(out.absolutePath, o)
             if (o.outWidth <= 0) { out.delete(); error(L.t("صورة غير صالحة", "Invalid image")) }
-            return Imported(name, kind, 3_000_000, display)
+            return Imported(name, kind, 3_000_000, display, o.outWidth, o.outHeight)
         }
         val r = MediaMetadataRetriever()
+        var w = 0; var h = 0
         val durMs = try {
             r.setDataSource(out.absolutePath)
+            w = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
+            h = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
+            val rot = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
+            if (rot == 90 || rot == 270) { val t = w; w = h; h = t }
             r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
         } finally { r.release() }
         if (durMs <= 0) { out.delete(); error(L.t("ملف غير مدعوم", "Unsupported file")) }
-        return Imported(name, kind, durMs * 1000, display.substringBeforeLast('.'))
+        return Imported(name, kind, durMs * 1000, display.substringBeforeLast('.'), w, h)
     }
 
     /** Removes media files no longer referenced by the project. */

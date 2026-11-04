@@ -1396,29 +1396,40 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
             return
         }
         val sheet = Sheet(this, L.t("تصدير مخصص", "Custom export"))
-        val res = listOf(720, 1080, 1440, 2160)
+        val (w8, h8) = project.aspect.canvas(4320)
+        val has8k = com.mawj.editor.engine.DeviceCaps.canEncode(android.media.MediaFormat.MIMETYPE_VIDEO_HEVC, w8, h8)
+        val res = listOf(720, 1080, 1440, 2160) + if (has8k) listOf(4320) else emptyList()
+        val srcFpsNow = sourceFps()
+        val anyHdr = project.clips.any { it.type == ClipType.VIDEO && com.mawj.editor.engine.DeviceCaps.isHdr(store.mediaFile(project.id, it.file)) }
+        val hdrOk = anyHdr && com.mawj.editor.engine.DeviceCaps.hdrEncoder
         var r = 1
         var quality = 1
         var hevc = false
-        sheet.chips(L.t("الدقة", "Resolution"), listOf("720p", "1080p", "2K", "4K"), r) { r = it }
+        sheet.chips(L.t("الدقة", "Resolution"), listOf("720p", "1080p", "2K", "4K") + if (has8k) listOf("8K") else emptyList(), r) { r = it }
         sheet.chips(L.t("الجودة", "Quality"), listOf(L.t("عالية", "High"), L.t("قصوى", "Max"), L.t("استديو", "Studio")), quality) { quality = it }
         sheet.chips(L.t("الترميز", "Codec"), listOf(L.t("H.264 (متوافق)", "H.264 (compatible)"), L.t("H.265 (أصغر)", "H.265 (smaller)")), 0) { hevc = it == 1 }
         var fps = 0f
-        sheet.chips(L.t("الفريمات", "Frame rate"), listOf(L.t("الأصلي", "Original"), "24", "25", "30", "50", "60"), 0) {
-            fps = listOf(0f, 24f, 25f, 30f, 50f, 60f)[it]
+        val fpsOpts = listOf(0f, 24f, 25f, 30f, 50f, 60f) + if (srcFpsNow >= 100f) listOf(120f) else emptyList()
+        sheet.chips(L.t("الفريمات", "Frame rate") + " (" + L.t("المقطع: ", "source: ") + srcFpsNow.toInt() + ")",
+            listOf(L.t("الأصلي", "Original")) + fpsOpts.drop(1).map { it.toInt().toString() }, 0) {
+            fps = fpsOpts[it]
         }
+        var keepHdr = false
+        if (hdrOk) sheet.toggle(L.t("الحفاظ على HDR ‏(10-bit) — لشاشات HDR", "Keep HDR (10-bit) — for HDR screens"), false) { keepHdr = it }
+        else if (anyHdr) sheet.note(L.t("ℹ️ مقاطعك HDR لكن ما لقينا مرمّز HDR في الجهاز، بنحولها لـ SDR.", "ℹ️ Your clips are HDR but no HDR encoder was found; exporting SDR."))
         var detail = 0f
         sheet.toggle(L.t("تحسين التفاصيل (حدّة ذكية عند التكبير)", "Detail enhance (smart sharpening for upscales)"), false) { detail = if (it) 0.35f else 0f }
         sheet.note(L.t("💡 الفريمات «الأصلي» يحافظ على فريمات التصوير (مثلاً 60). اختيار رقم أقل يخفّضها. ما نقدر نزيد فوق فريمات التصوير بدون تشويه.",
             "💡 “Original” keeps the camera frame rate (e.g. 60). A lower number reduces it. We can't go above the source rate without artifacts."))
         sheet.button(L.t("تصدير وحفظ", "Export & save")) {
             sheet.dismiss()
-            export(res[r], listOf(0.25, 0.4, 0.6)[quality], hevc, false, fps, detail)
+            if (res[r] == 4320) hevc = true
+            export(res[r], listOf(0.25, 0.4, 0.6)[quality], hevc || keepHdr, false, fps, detail, keepHdr)
         }
         sheet.show()
     }
 
-    private fun export(shortSide: Int, bpp: Double, hevc: Boolean, tiktok: Boolean, fps: Float = 0f, detail: Float = 0f) {
+    private fun export(shortSide: Int, bpp: Double, hevc: Boolean, tiktok: Boolean, fps: Float = 0f, detail: Float = 0f, keepHdr: Boolean = false) {
         player?.pause()
         player?.release(); player = null
         b.playerView.player = null
@@ -1443,12 +1454,13 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         val (w, h) = project.aspect.canvas(shortSide)
         val srcFps = sourceFps()
         val outFps = if (fps > 0f) minOf(fps, srcFps) else srcFps
-        val bitrate = (w.toDouble() * h * outFps.coerceIn(24f, 60f) * bpp).toLong().coerceIn(8_000_000, 160_000_000).toInt()
+        val bitrate = (w.toDouble() * h * outFps.coerceIn(24f, 120f) * bpp * (if (hevc) 0.7 else 1.0)).toLong().coerceIn(8_000_000, 200_000_000).toInt()
         val out = File(cacheDir, "export.mp4").apply { delete() }
         exportJob = lifecycleScope.launch {
             try {
                 // 1) Render overlapping transitions at full quality.
-                val needed = Bridges.needed(project)
+                // Overlap renders are 8-bit; in HDR mode boundaries use the in-timeline fallback instead.
+                val needed = if (keepHdr) emptyList() else Bridges.needed(project)
                 val bridges = HashMap<Int, File>()
                 needed.forEachIndexed { n, i ->
                     label.text = L.t("تجهيز الدمج ${n + 1}/${needed.size}…", "Preparing transition ${n + 1}/${needed.size}…")
@@ -1458,7 +1470,7 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
                 if (bridges.size < needed.size) toast(L.t("بعض الانتقالات ما تجهزت: ", "Some transitions failed: ") + Bridges.lastError)
                 // 2) Export the timeline.
                 val comp = CompositionFactory.build(this@EditorActivity, store, project,
-                    BuildOptions(w, h, true, bridges = bridges, maxFps = if (fps > 0f && fps < srcFps - 0.5f) fps else 0f, sharpen = detail))
+                    BuildOptions(w, h, true, bridges = bridges, maxFps = if (fps > 0f && fps < srcFps - 0.5f) fps else 0f, sharpen = detail, keepHdr = keepHdr))
                 MediaJobs.exportVideo(this@EditorActivity, comp, bitrate, out, hevc) { p ->
                     bar.setProgressCompat(p, true); label.text = "$p%"
                 }

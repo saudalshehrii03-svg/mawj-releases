@@ -144,6 +144,12 @@ class HomeActivity : AppCompatActivity() {
             sheet.dismiss(); showAccount()
         }
         val ver = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: ""
+        val caps = com.mawj.editor.engine.DeviceCaps
+        val k8 = caps.canEncode(android.media.MediaFormat.MIMETYPE_VIDEO_HEVC, 7680, 4320)
+        val k4 = caps.canEncode(android.media.MediaFormat.MIMETYPE_VIDEO_AVC, 3840, 2160)
+        fun mark(b: Boolean) = if (b) "✓" else "✗"
+        sheet.note(L.t("📱 قدرات جهازك (من العتاد نفسه):\nتصدير HDR ‏10-bit: ${mark(caps.hdrEncoder)}\n4K: ${mark(k4)}   •   8K: ${mark(k8)}",
+            "📱 Your device (detected from hardware):\nHDR 10-bit export: ${mark(caps.hdrEncoder)}\n4K: ${mark(k4)}   •   8K: ${mark(k8)}"))
         sheet.note(L.t("موج مونتاج • الإصدار $ver", "Mawj Edit • version $ver"))
         sheet.show()
     }

@@ -56,6 +56,8 @@ class BuildOptions(
     val sharpen: Float = 0f,
     /** Use lightweight proxies (previews only). */
     val useProxies: Boolean = false,
+    /** Keep HDR (10-bit HEVC export) instead of converting to SDR. */
+    val keepHdr: Boolean = false,
 )
 
 @OptIn(UnstableApi::class)
@@ -142,7 +144,7 @@ object CompositionFactory {
 
         val builder = Composition.Builder(sequences)
         // HDR / 10-bit footage is always converted to SDR; otherwise it renders black on a normal surface.
-        builder.setHdrMode(Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_OPEN_GL)
+        builder.setHdrMode(if (opt.keepHdr) Composition.HDR_MODE_KEEP_HDR else Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_OPEN_GL)
         if (opt.forExport) builder.experimentalSetForceAudioTrack(true)
         return builder.build()
     }

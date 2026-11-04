@@ -65,17 +65,22 @@
             android:textStyle="bold" />
     </LinearLayout>
 
+    <!-- Stage: the preview stays put; the editor panel slides over it (no relayout while dragging) -->
+    <FrameLayout
+        android:id="@+id/stage"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
     <!-- Preview -->
     <FrameLayout
         android:id="@+id/previewCard"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
+        android:layout_height="match_parent"
         android:layout_marginStart="14dp"
         android:layout_marginTop="4dp"
         android:layout_marginEnd="14dp"
-        android:layout_weight="1"
-        android:background="@drawable/glass_card"
-        android:clipToOutline="true">
+        android:layout_marginBottom="150dp">
 
         <androidx.media3.ui.PlayerView
             android:id="@+id/playerView"
@@ -100,7 +105,7 @@
             android:id="@+id/chips"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_gravity="bottom|start"
+            android:layout_gravity="top|start"
             android:layout_margin="10dp"
             android:orientation="vertical" />
 
@@ -162,11 +167,13 @@
         </LinearLayout>
     </FrameLayout>
 
-    <!-- Bottom editor panel (height set by dragging the handle) -->
+    <!-- Editor panel: tall, anchored at the bottom of the stage, shown partially via translationY -->
     <LinearLayout
         android:id="@+id/bottomPanel"
         android:layout_width="match_parent"
-        android:layout_height="380dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="bottom"
+        android:background="#FF0F0F11"
         android:orientation="vertical">
 
         <!-- Control bar: full screen • mute | play | undo • redo  (also the resize handle) -->
@@ -293,6 +300,17 @@
                 android:layout_height="wrap_content" />
         </androidx.core.widget.NestedScrollView>
 
+    </LinearLayout>
+    </FrameLayout>
+
+    <!-- Fixed tool bar -->
+    <LinearLayout
+        android:id="@+id/toolsBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#FF141416"
+        android:orientation="vertical">
+
         <TextView
             android:id="@+id/toolsTitle"
             android:layout_width="wrap_content"
@@ -306,7 +324,6 @@
         <HorizontalScrollView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="#FF141416"
             android:scrollbars="none">
 
             <LinearLayout

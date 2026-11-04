@@ -192,30 +192,78 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
     private var category = ""
     private val splitPrefs by lazy { getSharedPreferences("editor_ui", MODE_PRIVATE) }
 
-    private fun minPanel() = dp(170)
-    private fun maxPanel() = (resources.displayMetrics.heightPixels * 0.68f).toInt()
+    /** Visible height of the editor panel (it slides over the preview). */
+    private var panelV = 0f
 
-    private fun setPanelHeight(h: Int) {
-        val v = h.coerceIn(minPanel(), maxPanel())
-        b.bottomPanel.layoutParams = b.bottomPanel.layoutParams.apply { height = v }
+    private fun minPanel() = dp(150).toFloat()
+    private fun maxPanel() = (b.stage.height * 0.78f).coerceAtLeast(minPanel())
+
+    /**
+     * Moves the panel and scales the video with GPU transforms only — no layout pass, so the
+     * video surface never resizes and the motion follows the finger smoothly.
+     */
+    private fun setPanel(v: Float, settle: Boolean = false) {
+        if (b.stage.height == 0) return
+        panelV = v.coerceIn(minPanel(), maxPanel())
+        b.bottomPanel.translationY = b.stage.height - panelV
+        applyPreviewTransform()
+        if (settle) {
+            // Shrink the timeline viewport to the visible part so every lane stays scrollable.
+            val pad = (b.stage.height - panelV).toInt()
+            if (b.bottomPanel.paddingBottom != pad) b.bottomPanel.setPadding(0, 0, 0, pad)
+            splitPrefs.edit().putFloat("panel_v", panelV).apply()
+        }
+    }
+
+    private fun contentFrame(): View? = b.playerView.findViewById(androidx.media3.ui.R.id.exo_content_frame)
+
+    /** Fits the video into the part of the preview that the panel doesn't cover. */
+    private fun applyPreviewTransform() {
+        val content = contentFrame() ?: return
+        val full = b.playerView.height.toFloat()
+        val ch = content.height.toFloat()
+        if (full <= 0f || ch <= 0f || fullscreen) {
+            content.scaleX = 1f; content.scaleY = 1f; content.translationY = 0f
+            return
+        }
+        val covered = (panelV - minPanel()).coerceAtLeast(0f)
+        val visible = (full - covered).coerceAtLeast(full * 0.2f)
+        val s = (visible / ch).coerceAtMost(1f)
+        content.pivotX = content.width / 2f
+        content.pivotY = 0f
+        content.scaleX = s
+        content.scaleY = s
+        content.translationY = (visible - ch * s) / 2f - (full - ch) / 2f
     }
 
     @android.annotation.SuppressLint("ClickableViewAccessibility")
     private fun setupSplit() {
-        setPanelHeight(splitPrefs.getInt("panel_h", dp(380)))
-        // Drag the handle (or swipe vertically on the preview) to resize.
+        // Rounded video corners that follow the scale transform.
+        contentFrame()?.apply {
+            outlineProvider = object : android.view.ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: android.graphics.Outline) =
+                    outline.setRoundRect(0, 0, view.width, view.height, dp(14).toFloat())
+            }
+            clipToOutline = true
+            addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> applyPreviewTransform() }
+        }
+        b.stage.addOnLayoutChangeListener { _, _, top, _, bottom, _, oldTop, _, oldBottom ->
+            if (bottom - top != oldBottom - oldTop) b.stage.post {
+                setPanel(if (panelV > 0) panelV else splitPrefs.getFloat("panel_v", b.stage.height * 0.55f), settle = true)
+            }
+        }
         var startY = 0f
-        var startH = 0
+        var startV = 0f
         b.handle.setOnTouchListener { _, e ->
             when (e.actionMasked) {
-                android.view.MotionEvent.ACTION_DOWN -> { startY = e.rawY; startH = b.bottomPanel.height }
-                android.view.MotionEvent.ACTION_MOVE -> setPanelHeight(startH - (e.rawY - startY).toInt())
-                android.view.MotionEvent.ACTION_UP -> splitPrefs.edit().putInt("panel_h", b.bottomPanel.height).apply()
+                android.view.MotionEvent.ACTION_DOWN -> { startY = e.rawY; startV = panelV }
+                android.view.MotionEvent.ACTION_MOVE -> setPanel(startV - (e.rawY - startY))
+                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> setPanel(panelV, settle = true)
             }
             true
         }
         val detector = android.view.GestureDetector(this, object : android.view.GestureDetector.SimpleOnGestureListener() {
-            override fun onDown(e: android.view.MotionEvent): Boolean { startH = b.bottomPanel.height; return true }
+            override fun onDown(e: android.view.MotionEvent): Boolean { startV = panelV; return true }
             override fun onSingleTapConfirmed(e: android.view.MotionEvent): Boolean {
                 if (fullscreen) b.fullControls.visibility = if (b.fullControls.visibility == View.VISIBLE) View.GONE else View.VISIBLE
                 else togglePlay()
@@ -224,14 +272,14 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
             override fun onDoubleTap(e: android.view.MotionEvent): Boolean { setFullscreen(!fullscreen); return true }
             override fun onScroll(e1: android.view.MotionEvent?, e2: android.view.MotionEvent, dx: Float, dy: Float): Boolean {
                 if (fullscreen || e1 == null) return false
-                setPanelHeight(startH - (e2.rawY - e1.rawY).toInt())
+                setPanel(startV - (e2.rawY - e1.rawY))
                 return true
             }
         })
         b.playerView.setOnTouchListener { _, e ->
             detector.onTouchEvent(e)
-            if (e.actionMasked == android.view.MotionEvent.ACTION_UP && !fullscreen) {
-                splitPrefs.edit().putInt("panel_h", b.bottomPanel.height).apply()
+            if ((e.actionMasked == android.view.MotionEvent.ACTION_UP || e.actionMasked == android.view.MotionEvent.ACTION_CANCEL) && !fullscreen) {
+                setPanel(panelV, settle = true)
             }
             true
         }
@@ -243,12 +291,22 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         val vis = if (on) View.GONE else View.VISIBLE
         b.topBar.visibility = vis
         b.bottomPanel.visibility = vis
+        b.toolsBar.visibility = vis
         b.fullControls.visibility = if (on) View.VISIBLE else View.GONE
+        (b.previewCard.layoutParams as android.view.ViewGroup.MarginLayoutParams).apply {
+            val m = if (on) 0 else dp(14)
+            marginStart = m; marginEnd = m; topMargin = if (on) 0 else dp(4)
+            bottomMargin = if (on) 0 else dp(150)
+            b.previewCard.layoutParams = this
+        }
         val ctl = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
         if (on) {
             ctl.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
             ctl.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         } else ctl.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        applyPreviewTransform()
+        // Redraw the current frame at the new size (matters while paused).
+        b.previewCard.post { player?.let { if (!it.isPlaying) it.seekTo(it.currentPosition) } }
         updateTime()
     }
 

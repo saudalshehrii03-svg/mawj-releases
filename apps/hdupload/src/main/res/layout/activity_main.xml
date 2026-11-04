@@ -1,0 +1,239 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg"
+    android:fillViewport="true"
+    android:fitsSystemWindows="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="موج HD"
+            android:textColor="#FFFFFF"
+            android:textSize="28sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="جهّز مقطعك بأعلى جودة قبل الرفع على تيك توك"
+            android:textColor="@color/text_dim"
+            android:textSize="14sp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/pickButton"
+            android:layout_width="match_parent"
+            android:layout_height="64dp"
+            android:layout_marginTop="20dp"
+            android:text="اختر مقطع من الاستديو"
+            android:textSize="16sp"
+            app:cornerRadius="16dp" />
+
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/sourceCard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:visibility="gone"
+            app:cardBackgroundColor="@color/card"
+            app:cardCornerRadius="16dp"
+            app:strokeWidth="0dp">
+
+            <TextView
+                android:id="@+id/sourceInfo"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:lineSpacingExtra="4dp"
+                android:padding="16dp"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp" />
+        </com.google.android.material.card.MaterialCardView>
+
+        <TextView style="@style/Section" android:text="الدقة" />
+
+        <RadioGroup
+            android:id="@+id/resolutionGroup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:checkedButton="@+id/res1080">
+
+            <RadioButton
+                android:id="@+id/res1080"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="1080p — الأنسب للتيك توك (موصى به)" />
+
+            <RadioButton
+                android:id="@+id/res1440"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="2K — 1440p" />
+
+            <RadioButton
+                android:id="@+id/res2160"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="4K — 2160p" />
+
+            <RadioButton
+                android:id="@+id/resOriginal"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="نفس دقة المقطع الأصلي" />
+        </RadioGroup>
+
+        <TextView style="@style/Section" android:text="الجودة (معدل البت)" />
+
+        <RadioGroup
+            android:id="@+id/qualityGroup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:checkedButton="@+id/qMax">
+
+            <RadioButton
+                android:id="@+id/qHigh"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="عالية" />
+
+            <RadioButton
+                android:id="@+id/qMax"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="قصوى (موصى به)" />
+
+            <RadioButton
+                android:id="@+id/qStudio"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="استديو (ملف أكبر)" />
+        </RadioGroup>
+
+        <TextView style="@style/Section" android:text="الترميز" />
+
+        <RadioGroup
+            android:id="@+id/codecGroup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:checkedButton="@+id/codecH264">
+
+            <RadioButton
+                android:id="@+id/codecH264"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="H.264 — الأكثر توافقاً مع تيك توك" />
+
+            <RadioButton
+                android:id="@+id/codecH265"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="H.265 / HEVC — حجم أصغر" />
+        </RadioGroup>
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/fit916Switch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="إطار عمودي 9:16 (يضيف حواف سوداء إذا لزم)" />
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/toneMapSwitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:checked="true"
+            android:text="تحويل HDR إلى SDR (يمنع الألوان الباهتة)" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/exportButton"
+            android:layout_width="match_parent"
+            android:layout_height="64dp"
+            android:layout_marginTop="20dp"
+            android:enabled="false"
+            android:text="صدّر واحفظ في الجهاز"
+            android:textSize="16sp"
+            app:cornerRadius="16dp" />
+
+        <com.google.android.material.progressindicator.LinearProgressIndicator
+            android:id="@+id/progress"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:max="100"
+            android:visibility="gone"
+            app:trackCornerRadius="4dp"
+            app:trackThickness="8dp" />
+
+        <TextView
+            android:id="@+id/status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:lineSpacingExtra="4dp"
+            android:textColor="@color/text_dim"
+            android:textSize="14sp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/cancelButton"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="إلغاء"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/resultActions"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal"
+            android:visibility="gone">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/tiktokButton"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_marginEnd="6dp"
+                android:layout_weight="1"
+                android:text="ارفع على تيك توك"
+                app:cornerRadius="14dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/shareButton"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:text="مشاركة"
+                app:cornerRadius="14dp" />
+        </LinearLayout>
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            app:cardBackgroundColor="@color/card"
+            app:cardCornerRadius="16dp"
+            app:strokeWidth="0dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:lineSpacingExtra="5dp"
+                android:padding="16dp"
+                android:text="@string/tips"
+                android:textColor="#DDDDE5"
+                android:textSize="13sp" />
+        </com.google.android.material.card.MaterialCardView>
+    </LinearLayout>
+</ScrollView>

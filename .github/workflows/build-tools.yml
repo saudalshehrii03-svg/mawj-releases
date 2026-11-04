@@ -1,0 +1,79 @@
+name: Build Mawj tools (HD + Audio)
+
+on:
+  push:
+    branches:
+      - main
+      - "claude/**"
+    paths:
+      - "apps/**"
+      - ".github/workflows/build-tools.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      HAS_KEYSTORE: ${{ secrets.SIGNING_KEYSTORE_BASE64 != '' }}
+      VERSION_CODE: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # Keeps the same debug signing key between runs so updates install over the old version
+      # (only used when no release keystore secret is configured).
+      - name: Cache signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: mawj-debug-keystore-v1
+
+      - name: Decode release keystore
+        if: env.HAS_KEYSTORE == 'true'
+        run: |
+          echo "${{ secrets.SIGNING_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "SIGNING_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      - name: Build APKs
+        working-directory: apps
+        env:
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace assembleRelease
+
+      - name: Collect APKs
+        run: |
+          mkdir -p out
+          cp apps/hdupload/build/outputs/apk/release/*.apk "out/Mawj-HD-1.0.${VERSION_CODE}.apk"
+          cp apps/audioextract/build/outputs/apk/release/*.apk "out/Mawj-Audio-1.0.${VERSION_CODE}.apk"
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mawj-tools-apks
+          path: out/*.apk
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: tools-v1.0.${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          name: "أدوات موج 1.0.${{ github.run_number }} — موج HD + موج صوت"
+          body: |
+            **Mawj-HD** — تصدير المقطع بجودة عالية (1080p / 2K / 4K) وحفظه في الاستديو ورفعه على تيك توك.
+            **Mawj-Audio** — تحويل أي مقطع إلى ملف صوتي (M4A أصلي بدون فقد / WAV / AAC).
+
+            التثبيت: نزّل ملف الـ APK من الجوال ← افتحه ← اسمح بالتثبيت من مصادر غير معروفة.
+          files: out/*.apk

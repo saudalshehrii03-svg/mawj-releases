@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg"
+    android:fillViewport="true"
+    android:fitsSystemWindows="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="موج صوت"
+            android:textColor="#FFFFFF"
+            android:textSize="28sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="حوّل أي مقطع فيديو إلى ملف صوتي واحفظه في جهازك"
+            android:textColor="@color/text_dim"
+            android:textSize="14sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/pickGalleryButton"
+                android:layout_width="0dp"
+                android:layout_height="64dp"
+                android:layout_marginEnd="6dp"
+                android:layout_weight="1"
+                android:text="من الاستديو"
+                android:textSize="15sp"
+                app:cornerRadius="16dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/pickFilesButton"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="64dp"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:text="من الملفات"
+                android:textSize="15sp"
+                app:cornerRadius="16dp" />
+        </LinearLayout>
+
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/sourceCard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:visibility="gone"
+            app:cardBackgroundColor="@color/card"
+            app:cardCornerRadius="16dp"
+            app:strokeWidth="0dp">
+
+            <TextView
+                android:id="@+id/sourceInfo"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:lineSpacingExtra="4dp"
+                android:padding="16dp"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp" />
+        </com.google.android.material.card.MaterialCardView>
+
+        <TextView style="@style/Section" android:text="اسم الملف" />
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+            app:boxCornerRadiusBottomEnd="14dp"
+            app:boxCornerRadiusBottomStart="14dp"
+            app:boxCornerRadiusTopEnd="14dp"
+            app:boxCornerRadiusTopStart="14dp">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/nameInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="مثال: صوت المقطع"
+                android:inputType="text"
+                android:maxLines="1" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <TextView style="@style/Section" android:text="الصيغة" />
+
+        <RadioGroup
+            android:id="@+id/formatGroup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:checkedButton="@+id/fmtCopy">
+
+            <RadioButton
+                android:id="@+id/fmtCopy"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="M4A أصلي — بدون فقد في الجودة (موصى به)" />
+
+            <RadioButton
+                android:id="@+id/fmtWav"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="WAV — غير مضغوط (للمونتاج)" />
+
+            <RadioButton
+                android:id="@+id/fmtAac"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="M4A (AAC) — إعادة ترميز" />
+        </RadioGroup>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/convertButton"
+            android:layout_width="match_parent"
+            android:layout_height="64dp"
+            android:layout_marginTop="20dp"
+            android:enabled="false"
+            android:text="حوّل إلى صوت واحفظ"
+            android:textSize="16sp"
+            app:cornerRadius="16dp" />
+
+        <com.google.android.material.progressindicator.LinearProgressIndicator
+            android:id="@+id/progress"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:max="100"
+            android:visibility="gone"
+            app:trackCornerRadius="4dp"
+            app:trackThickness="8dp" />
+
+        <TextView
+            android:id="@+id/status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:lineSpacingExtra="4dp"
+            android:textColor="@color/text_dim"
+            android:textSize="14sp" />
+
+        <LinearLayout
+            android:id="@+id/resultActions"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal"
+            android:visibility="gone">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/playButton"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_marginEnd="6dp"
+                android:layout_weight="1"
+                android:text="تشغيل"
+                app:cornerRadius="14dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/shareButton"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:text="مشاركة"
+                app:cornerRadius="14dp" />
+        </LinearLayout>
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            app:cardBackgroundColor="@color/card"
+            app:cardCornerRadius="16dp"
+            app:strokeWidth="0dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:lineSpacingExtra="5dp"
+                android:padding="16dp"
+                android:text="@string/tips"
+                android:textColor="#DDDDE5"
+                android:textSize="13sp" />
+        </com.google.android.material.card.MaterialCardView>
+    </LinearLayout>
+</ScrollView>

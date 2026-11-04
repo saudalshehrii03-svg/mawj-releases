@@ -29,26 +29,34 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      # Keeps the same debug signing key between runs so updates install over the old version
-      # (only used when no release keystore secret is configured).
-      - name: Cache signing key
+      # A stable signing key so updates install over the previous version.
+      # Uses the repository secrets when present, otherwise a CI-generated key kept in the Actions cache.
+      - name: Restore signing key
+        if: env.HAS_KEYSTORE != 'true'
         uses: actions/cache@v4
         with:
-          path: ~/.android/debug.keystore
-          key: mawj-debug-keystore-v1
+          path: ~/mawj-signing.jks
+          key: mawj-signing-v2
 
-      - name: Decode release keystore
-        if: env.HAS_KEYSTORE == 'true'
+      - name: Prepare signing key
         run: |
-          echo "${{ secrets.SIGNING_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/release.jks"
-          echo "SIGNING_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          if [ "$HAS_KEYSTORE" = "true" ]; then
+            echo "${{ secrets.SIGNING_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "SIGNING_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          else
+            if [ ! -f "$HOME/mawj-signing.jks" ]; then
+              keytool -genkeypair -keystore "$HOME/mawj-signing.jks" -alias mawj -keyalg RSA -keysize 2048 \
+                -validity 10000 -storepass mawjtools -keypass mawjtools -dname "CN=Mawj Tools"
+            fi
+            echo "SIGNING_KEYSTORE_PATH=$HOME/mawj-signing.jks" >> "$GITHUB_ENV"
+          fi
 
       - name: Build APKs
         working-directory: apps
         env:
-          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
-          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
-          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD || 'mawjtools' }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS || 'mawj' }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD || 'mawjtools' }}
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon --stacktrace assembleRelease
@@ -63,12 +71,9 @@ jobs:
 
       - name: Signing certificate fingerprint (for Google sign-in setup)
         run: |
-          if [ -n "${SIGNING_KEYSTORE_PATH:-}" ]; then
-            KS="$SIGNING_KEYSTORE_PATH"; PASS="${{ secrets.SIGNING_STORE_PASSWORD }}"
-          else
-            KS="$HOME/.android/debug.keystore"; PASS="android"
-          fi
-          SHA1=$(keytool -list -v -keystore "$KS" -storepass "$PASS" 2>/dev/null | grep -m1 "SHA1:" | awk '{print $2}')
+          BT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+          RAW=$("$BT/apksigner" verify --print-certs out/Mawj-Edit-*.apk | grep -m1 "SHA-1 digest" | awk '{print $NF}')
+          SHA1=$(echo "$RAW" | tr 'a-f' 'A-F' | sed 's/../&:/g; s/:$//')
           echo "SHA-1: $SHA1"
           cat > notes.md <<NOTES
           **Mawj-Edit** — موج مونتاج: محرر فيديو (تقسيم، قص، سرعة، صوت، استخراج الصوت، انتقالات، فلاتر، نص، تصدير 4K، نسخ احتياطي على Google Drive).

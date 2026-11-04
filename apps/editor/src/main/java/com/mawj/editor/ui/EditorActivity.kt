@@ -986,7 +986,7 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         sheet.show()
     }
 
-    private fun volumeClip(c: Clip) = audioPanel(
+    private fun volumeClip(c: Clip): Unit = audioPanel(
         title = L.t("صوت المقطع", "Clip audio"), fx = c.fx,
         volume = { c.volume }, setVolume = { v -> edit { c.volume = v } },
         speed = null, setSpeed = null, lengthUs = c.timelineUs,
@@ -1392,7 +1392,7 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
 
     // ---------- Audio tools ----------
 
-    private fun volumeAudio(a: AudioClip) = audioPanel(
+    private fun volumeAudio(a: AudioClip): Unit = audioPanel(
         title = "♪ " + a.label, fx = a.fx,
         volume = { a.volume }, setVolume = { v -> edit { a.volume = v } },
         speed = { a.speed }, setSpeed = { v -> edit { a.speed = v } },

@@ -35,6 +35,7 @@ import com.mawj.editor.MawjApp
 import com.mawj.editor.R
 import com.mawj.editor.databinding.ActivityEditorBinding
 import com.mawj.editor.engine.Bridges
+import com.mawj.editor.engine.Proxies
 import com.mawj.editor.engine.BuildOptions
 import com.mawj.editor.engine.CompositionFactory
 import com.mawj.editor.engine.MediaJobs
@@ -52,6 +53,7 @@ import com.mawj.editor.sync.GoogleAuth
 import com.mawj.editor.sync.SyncPrefs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -87,6 +89,8 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
     private var bridgeJob: Job? = null
 
     private val thumbs = LruCache<String, Bitmap>(80)
+    /** One decoder at a time for thumbnails, so they never compete with playback. */
+    private val thumbDispatcher = java.util.concurrent.Executors.newSingleThreadExecutor().asCoroutineDispatcher()
     private val thumbLoading = HashSet<String>()
 
     private val pickMedia = registerForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(30)) { uris ->
@@ -266,7 +270,6 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
                 override fun getOutline(view: View, outline: android.graphics.Outline) =
                     outline.setRoundRect(0, 0, view.width, view.height, dp(14).toFloat())
             }
-            clipToOutline = true
             addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> applyPreviewTransform() }
         }
         b.stage.addOnLayoutChangeListener { _, _, top, _, bottom, _, oldTop, _, oldBottom ->
@@ -426,11 +429,15 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         b.playerView.player = null
         if (project.clips.isEmpty()) { updatePlayIcon(); return }
 
+        // Heavy clips (4K / HDR) get a light proxy first, so the preview is smooth and reliable.
+        if (proxyJob?.isActive == true) return
+        if (Proxies.missing(this, store, project).isNotEmpty()) { prepareProxies(); return }
+
         val (w, h) = project.aspect.canvas(previewShort)
         val ready = Bridges.needed(project).mapNotNull { i -> Bridges.cached(this, project, i, w, h, false)?.let { i to it } }.toMap()
         if (ready.size < Bridges.needed(project).size) renderPreviewBridges()
         val composition = try {
-            CompositionFactory.build(this, store, project, BuildOptions(w, h, false, previewTier < 1, previewTier < 2, ready))
+            CompositionFactory.build(this, store, project, BuildOptions(w, h, false, previewTier < 1, previewTier < 2, ready, useProxies = true))
         } catch (e: Exception) {
             toast(L.t("تعذّر تجهيز المعاينة: ${e.message}", "Couldn't prepare the preview: ${e.message}"))
             return
@@ -463,12 +470,12 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
             }
 
             override fun onPlayerError(error: PlaybackException) {
+                val detail = errText(error)
                 if (previewTier < 2) {
                     previewTier++
-                    toast(if (previewTier == 1) L.t("المعاينة بدون السرعة (التصدير يطبقها)", "Preview without speed changes (export applies them)") else L.t("معاينة مبسّطة (التصدير يطبق كل التأثيرات)", "Simplified preview (export applies all effects)"))
                     schedulePreview()
                 } else {
-                    toast(L.t("تعذّر تشغيل المعاينة: ${error.errorCodeName}", "Couldn't play the preview: ${error.errorCodeName}"))
+                    toast(L.t("تعذّر تشغيل المعاينة: ", "Couldn't play the preview: ") + detail)
                 }
             }
         })
@@ -481,6 +488,28 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         player = p
         if (wasPlaying) p.play()
         updatePlayIcon()
+    }
+
+    private var proxyJob: Job? = null
+
+    private fun errText(e: Throwable): String =
+        generateSequence(e) { it.cause }.mapNotNull { it.message }.distinct().take(3).joinToString(" ← ")
+
+    /** Creates 720p proxies for heavy clips (player released meanwhile so decoders are free), then previews. */
+    private fun prepareProxies() {
+        if (proxyJob?.isActive == true) return
+        val todo = Proxies.missing(this, store, project)
+        proxyJob = lifecycleScope.launch {
+            b.bridgeStatus.visibility = View.VISIBLE
+            todo.forEachIndexed { n, c ->
+                b.bridgeStatus.text = L.t("⚡ تجهيز معاينة سريعة ${n + 1}/${todo.size}…", "⚡ Preparing smooth preview ${n + 1}/${todo.size}…")
+                Fonts.apply(b.bridgeStatus)
+                Proxies.make(this@EditorActivity, store, project, c)
+            }
+            b.bridgeStatus.visibility = View.GONE
+            previewTier = 0
+            rebuildPreview()
+        }
     }
 
     /** Renders missing overlap transitions in the background, then refreshes the preview. */
@@ -1390,6 +1419,7 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         player?.release(); player = null
         b.playerView.player = null
         bridgeJob?.cancel()
+        proxyJob?.cancel()
         b.bridgeStatus.visibility = View.GONE
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
@@ -1441,7 +1471,7 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
                 dialog.dismiss(); out.delete()
                 val d = MaterialAlertDialogBuilder(this@EditorActivity)
                     .setTitle(L.t("تعذّر التصدير", "Export failed"))
-                    .setMessage(L.t("${e.message}\n\nجرّب دقة أقل (1080p).", "${e.message}\n\nTry a lower resolution (1080p)."))
+                    .setMessage(errText(e) + L.t("\n\nجرّب دقة أقل (1080p).", "\n\nTry a lower resolution (1080p)."))
                     .setPositiveButton(L.t("حسناً", "OK"), null).show()
                 Glass.style(d)
             } finally {
@@ -1515,7 +1545,7 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         val file = key.substringBefore("@")
         val atUs = key.substringAfter("@").toLong() * 100_000
         lifecycleScope.launch {
-            val bmp = withContext(Dispatchers.IO) {
+            val bmp = withContext(thumbDispatcher) {
                 runCatching {
                     val f = store.mediaFile(project.id, file)
                     val isImage = project.clips.firstOrNull { it.file == file }?.type == ClipType.IMAGE

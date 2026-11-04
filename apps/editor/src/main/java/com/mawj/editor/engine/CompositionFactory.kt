@@ -54,6 +54,8 @@ class BuildOptions(
     val maxFps: Float = 0f,
     /** Extra global sharpening (export "detail enhance"), 0..1. */
     val sharpen: Float = 0f,
+    /** Use lightweight proxies (previews only). */
+    val useProxies: Boolean = false,
 )
 
 @OptIn(UnstableApi::class)
@@ -163,7 +165,8 @@ object CompositionFactory {
         removeAudio: Boolean = false,
         removeVideo: Boolean = false,
     ): EditedMediaItem {
-        val uri = Uri.fromFile(store.mediaFile(project.id, c.file))
+        val proxy = if (opt.useProxies) Proxies.forClip(context, project.id, c) else null
+        val uri = Uri.fromFile(proxy ?: store.mediaFile(project.id, c.file))
         val audioFx = ArrayList<AudioProcessor>()
         val videoFx = ArrayList<Effect>()
 
@@ -230,7 +233,7 @@ object CompositionFactory {
         if (removeAudio) b.setRemoveAudio(true)
         if (removeVideo) b.setRemoveVideo(true)
         if (c.type == ClipType.IMAGE) b.setDurationUs(lenUs.coerceAtLeast(40_000)).setFrameRate(30)
-        else b.setDurationUs(c.sourceDurationUs)
+        else b.setDurationUs(proxy?.let { Proxies.durationUs(it).takeIf { d -> d > 0 } } ?: c.sourceDurationUs)
         return b.build()
     }
 

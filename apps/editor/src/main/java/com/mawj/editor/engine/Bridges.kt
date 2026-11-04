@@ -91,7 +91,7 @@ object Bridges {
             val a = project.clips[i]
             val b = project.clips[i + 1]
             val d = project.overlapUs(i)
-            val opt = BuildOptions(w, h, forExport)
+            val opt = BuildOptions(w, h, forExport, useProxies = !forExport)
             val segBitrate = (bitrate * 1.5).toInt().coerceAtMost(160_000_000)
 
             // 1) The two overlapping segments, each with its own looks, at canvas size (video only).
@@ -118,7 +118,7 @@ object Bridges {
             return out
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
-            lastError = e.message ?: e.javaClass.simpleName
+            lastError = generateSequence<Throwable>(e) { it.cause }.mapNotNull { it.message }.distinct().take(3).joinToString(" ← ")
             out.delete()
             return null
         } finally {

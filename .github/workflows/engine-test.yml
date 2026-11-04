@@ -36,7 +36,7 @@ jobs:
           script: |
             adb logcat -c || true
             cd apps && chmod +x gradlew && ./gradlew --no-daemon :editor:connectedDebugAndroidTest || (adb logcat -d > ../logcat.txt; exit 1)
-            adb logcat -d > ../logcat.txt || true
+            adb logcat -d > logcat.txt || true
       - name: Summarize logs
         if: always()
         run: |

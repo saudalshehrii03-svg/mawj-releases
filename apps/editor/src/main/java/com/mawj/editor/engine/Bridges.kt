@@ -129,7 +129,7 @@ object Bridges {
 
     private suspend fun exportSegment(context: Context, item: EditedMediaItem, out: File, bitrate: Int, forExport: Boolean) {
         val builder = Composition.Builder(listOf(EditedMediaItemSequence(listOf(item))))
-        if (forExport) builder.setHdrMode(Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_OPEN_GL)
+        builder.setHdrMode(Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_OPEN_GL)
         MediaJobs.exportVideo(context, builder.build(), bitrate, out) {}
     }
 

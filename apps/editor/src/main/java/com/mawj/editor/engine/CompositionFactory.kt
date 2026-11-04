@@ -141,10 +141,9 @@ object CompositionFactory {
         }
 
         val builder = Composition.Builder(sequences)
-        if (opt.forExport) {
-            builder.setHdrMode(Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_OPEN_GL)
-            builder.experimentalSetForceAudioTrack(true)
-        }
+        // HDR / 10-bit footage is always converted to SDR; otherwise it renders black on a normal surface.
+        builder.setHdrMode(Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_OPEN_GL)
+        if (opt.forExport) builder.experimentalSetForceAudioTrack(true)
         return builder.build()
     }
 

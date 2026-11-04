@@ -15,5 +15,6 @@ class MawjApp : Application() {
     override fun onCreate() {
         super.onCreate()
         store = ProjectStore(this)
+        com.mawj.editor.engine.Bridges.loadCaps(this)
     }
 }

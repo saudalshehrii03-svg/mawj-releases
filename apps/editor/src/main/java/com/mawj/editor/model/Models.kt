@@ -22,9 +22,18 @@ enum class Aspect(val w: Int, val h: Int, val label: String) {
     }
 }
 
-enum class Transition(val label: String) {
+/** Runtime capabilities learned on the device (overlapping transitions need multi-track compositing). */
+object Caps {
+    @Volatile var overlapSupported = true
+}
+
+enum class Transition(val label: String, val overlap: Boolean = false) {
     NONE("بدون"),
-    FADE("تلاشي"),
+    DISSOLVE("دمج ناعم", true),
+    DISSOLVE_ZOOM("دمج بتقريب", true),
+    SLIDE_OVER_LEFT("انزلاق ←", true),
+    SLIDE_OVER_UP("انزلاق ↑", true),
+    FADE("تلاشي أسود"),
     FLASH("وميض"),
     ZOOM_IN("تقريب"),
     ZOOM_OUT("تبعيد"),
@@ -155,18 +164,30 @@ data class Project(
     val clips: MutableList<Clip> = mutableListOf(),
     val audios: MutableList<AudioClip> = mutableListOf(),
 ) {
-    val durationUs: Long get() = clips.sumOf { it.timelineUs }
+    /** How long clip [k] and clip [k + 1] play on top of each other (overlapping transitions). */
+    fun overlapUs(k: Int): Long {
+        val a = clips.getOrNull(k) ?: return 0
+        val b = clips.getOrNull(k + 1) ?: return 0
+        if (!a.transition.overlap || !Caps.overlapSupported) return 0
+        val cap = (minOf(a.timelineUs, b.timelineUs) - 200_000) / 2
+        val v = minOf(a.transitionUs, cap)
+        return if (v < 100_000) 0 else v
+    }
 
-    fun clipStartUs(index: Int): Long = clips.take(index).sumOf { it.timelineUs }
+    val durationUs: Long get() = clips.indices.sumOf { clips[it].timelineUs - overlapUs(it) }
 
-    /** Index of the clip under [timeUs], or -1. */
+    fun clipStartUs(index: Int): Long = (0 until index).sumOf { clips[it].timelineUs - overlapUs(it) }
+
+    /** Index of the clip under [timeUs] (the later clip wins inside an overlap), or -1. */
     fun clipAt(timeUs: Long): Int {
+        if (clips.isEmpty()) return -1
+        var found = 0
         var t = 0L
         clips.forEachIndexed { i, c ->
-            if (timeUs < t + c.timelineUs) return i
-            t += c.timelineUs
+            if (timeUs >= t) found = i
+            t += c.timelineUs - overlapUs(i)
         }
-        return if (clips.isEmpty()) -1 else clips.lastIndex
+        return found
     }
 
     fun toJson(): JSONObject = JSONObject().apply {

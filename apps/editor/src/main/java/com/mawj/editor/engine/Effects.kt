@@ -64,7 +64,7 @@ class TransitionPlan(
     }
 }
 
-private fun ease(p: Float): Float = if (p < 0.5f) 4 * p * p * p else 1 - (-2 * p + 2).let { it * it * it } / 2
+internal fun ease(p: Float): Float = if (p < 0.5f) 4 * p * p * p else 1 - (-2 * p + 2).let { it * it * it } / 2
 
 /** Deterministic pseudo random in [-1, 1] that changes every ~40ms. */
 private fun noise(ptsUs: Long, salt: Int): Float {

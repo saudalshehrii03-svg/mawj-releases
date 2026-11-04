@@ -7,9 +7,10 @@
         <item name="colorSurface">@color/surface</item>
         <item name="colorSurfaceContainerLow">@color/surface</item>
         <item name="colorSurfaceContainer">@color/surface</item>
-        <item name="android:windowBackground">@color/bg</item>
-        <item name="android:statusBarColor">@color/bg</item>
-        <item name="android:navigationBarColor">@color/surface</item>
+        <item name="android:windowBackground">@drawable/bg_app</item>
+        <item name="android:statusBarColor">#FF0B0A14</item>
+        <item name="android:navigationBarColor">#FF07070C</item>
+        <item name="materialAlertDialogTheme">@style/MawjDialog</item>
         <item name="bottomSheetDialogTheme">@style/MawjSheet</item>
     </style>
     <style name="MawjSheet" parent="ThemeOverlay.Material3.BottomSheetDialog">
@@ -18,6 +19,12 @@
         <item name="bottomSheetStyle">@style/MawjSheetStyle</item>
     </style>
     <style name="MawjSheetStyle" parent="Widget.Material3.BottomSheet.Modal">
-        <item name="backgroundTint">@color/surface</item>
+        <item name="backgroundTint">@android:color/transparent</item>
+    </style>
+    <style name="MawjDialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
+        <item name="colorPrimary">@color/accent</item>
+        <item name="android:backgroundDimAmount">0.55</item>
+        <item name="colorSurface">#1C1A2A</item>
+        <item name="colorSurfaceContainerHigh">#1C1A2A</item>
     </style>
 </resources>

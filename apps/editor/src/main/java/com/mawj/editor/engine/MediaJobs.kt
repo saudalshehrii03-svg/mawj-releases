@@ -74,6 +74,7 @@ object MediaJobs {
         composition: Composition,
         bitrate: Int,
         out: File,
+        hevc: Boolean = false,
         onProgress: (Int) -> Unit,
     ): ExportResult {
         val encoder = DefaultEncoderFactory.Builder(context)
@@ -81,7 +82,7 @@ object MediaJobs {
             .setEnableFallback(true)
             .build()
         val builder = Transformer.Builder(context)
-            .setVideoMimeType(MimeTypes.VIDEO_H264)
+            .setVideoMimeType(if (hevc) MimeTypes.VIDEO_H265 else MimeTypes.VIDEO_H264)
             .setAudioMimeType(MimeTypes.AUDIO_AAC)
             .setEncoderFactory(encoder)
         return runTransformer(builder, { it.start(composition, out.absolutePath) }, onProgress)

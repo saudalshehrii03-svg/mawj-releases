@@ -5,7 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import androidx.annotation.OptIn
-import androidx.media3.common.VideoCompositorSettings
+import androidx.media3.effect.VideoCompositorSettings
 import androidx.media3.common.util.Size
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.OverlaySettings

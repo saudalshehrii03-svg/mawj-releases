@@ -60,6 +60,9 @@ class HomeActivity : AppCompatActivity() {
         b.list.adapter = adapter
         b.newButton.setOnClickListener { newProject() }
         b.accountButton.setOnClickListener { showAccount() }
+        Glass.gradientText(b.brand)
+        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        b.greeting.text = if (hour in 4..11) "صباح الإبداع ☀️" else "مساء الإبداع ✨"
     }
 
     override fun onResume() {
@@ -74,12 +77,13 @@ class HomeActivity : AppCompatActivity() {
             adapter.items = items
             adapter.notifyDataSetChanged()
             b.empty.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
+            b.sectionTitle.text = if (items.isEmpty()) "مشاريعك" else "مشاريعك (${items.size})"
         }
     }
 
     private fun updateAccountLine() {
         val email = SyncPrefs.email(this)
-        b.accountLine.text = if (email != null) "☁️ $email" else "مشاريعك محفوظة في الجهاز"
+        b.accountLine.text = if (email != null) "☁️  $email" else "📱  مشاريعك محفوظة في الجهاز"
     }
 
     private fun newProject() {
@@ -108,7 +112,7 @@ class HomeActivity : AppCompatActivity() {
                         .setMessage("بينحذف المشروع من الجهاز. النسخة الاحتياطية في جوجل (إن وجدت) تبقى.")
                         .setNegativeButton("إلغاء", null)
                         .setPositiveButton("حذف") { _, _ -> store.delete(p.id); reload() }
-                        .show()
+                        .show().also { Glass.style(it) }
                 }
                 true
             }
@@ -130,13 +134,13 @@ class HomeActivity : AppCompatActivity() {
 
     private fun showAccount() {
         val email = SyncPrefs.email(this)
-        val sheet = Sheet(this, "حساب جوجل والنسخ الاحتياطي")
+        val sheet = Sheet(this, "حساب جوجل", "نسخ احتياطي لمشاريعك على Google Drive")
         syncSheet = sheet
         if (email == null) {
-            sheet.text("سجّل دخولك بحساب جوجل عشان تنحفظ مشاريعك (المقاطع + التعديلات) في مساحة خاصة بالتطبيق داخل Google Drive. إذا غيرت جوالك، نزّل التطبيق وسجّل دخول وترجع لك مشاريعك.")
+            sheet.note("☁️ سجّل دخولك بحساب جوجل عشان تنحفظ مشاريعك (المقاطع + التعديلات) في مساحة خاصة بالتطبيق داخل Google Drive.\n\n📲 إذا غيرت جوالك: نزّل التطبيق وسجّل دخول وترجع لك مشاريعك.")
             sheet.button("تسجيل الدخول بحساب جوجل") { signIn() }
         } else {
-            sheet.text("مسجّل باسم: $email")
+            sheet.note("✅ مسجّل باسم: $email")
             val last = SyncPrefs.lastSync(this)
             sheet.text(if (last > 0) "آخر نسخ: " + DateUtils.getRelativeTimeSpanString(last) else "ما صار نسخ احتياطي للحين")
             sheet.toggle("نسخ احتياطي تلقائي عند الخروج من المشروع", SyncPrefs.auto(this)) { SyncPrefs.setAuto(this, it) }
@@ -248,11 +252,11 @@ class HomeActivity : AppCompatActivity() {
             val p = items[position]
             h.v.name.text = p.name
             val s = p.durationUs / 1_000_000
-            h.v.info.text = String.format(Locale.US, "%d:%02d", s / 60, s % 60) +
-                " • ${p.clips.size} مقطع • " + DateUtils.getRelativeTimeSpanString(p.updatedAt)
+            h.v.duration.text = String.format(Locale.US, "%d:%02d", s / 60, s % 60)
+            h.v.info.text = "${p.aspect.label} • ${p.clips.size} مقطع • " + DateUtils.getRelativeTimeSpanString(p.updatedAt)
             loadThumb(p, h.v.thumb)
-            h.v.root.setOnClickListener { open(p) }
-            h.v.root.setOnLongClickListener { menu(it, p); true }
+            h.v.card.setOnClickListener { open(p) }
+            h.v.card.setOnLongClickListener { menu(it, p); true }
         }
     }
 }

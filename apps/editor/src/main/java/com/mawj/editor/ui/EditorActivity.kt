@@ -12,6 +12,7 @@ import android.util.LruCache
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -31,6 +32,7 @@ import com.google.android.material.progressindicator.LinearProgressIndicator
 import com.mawj.editor.MawjApp
 import com.mawj.editor.R
 import com.mawj.editor.databinding.ActivityEditorBinding
+import com.mawj.editor.engine.Bridges
 import com.mawj.editor.engine.BuildOptions
 import com.mawj.editor.engine.CompositionFactory
 import com.mawj.editor.engine.MediaJobs
@@ -80,6 +82,7 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
     private val handler = Handler(Looper.getMainLooper())
     private var lastSeekAt = 0L
     private var exportJob: Job? = null
+    private var bridgeJob: Job? = null
 
     private val thumbs = LruCache<String, Bitmap>(80)
     private val thumbLoading = HashSet<String>()
@@ -196,10 +199,12 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         b.redoButton.alpha = if (redoStack.isEmpty()) 0.35f else 1f
         b.previewHint.visibility = if (project.clips.isEmpty()) View.VISIBLE else View.GONE
         b.exportButton.isEnabled = project.clips.isNotEmpty()
+        b.exportButton.alpha = if (project.clips.isEmpty()) 0.4f else 1f
 
-        val v = project.clips.map {
-            TimelineView.VBlock(0, it.timelineUs, thumbKey(it), it.type == ClipType.IMAGE, it.transition, it.text.isNotBlank())
+        val v = project.clips.mapIndexed { i, it ->
+            TimelineView.VBlock(project.clipStartUs(i), it.timelineUs, thumbKey(it), it.type == ClipType.IMAGE, it.transition, it.text.isNotBlank())
         }
+        b.subtitle.text = "${project.aspect.label} • ${project.clips.size} مقطع • ${fmt(project.durationUs).substringBefore('.')}"
         val a = project.audios.map { TimelineView.ABlock(it.startAtUs, it.lengthUs, it.label) }
         b.timeline.setData(v, a)
         b.timeline.selectedClip = selClip
@@ -227,8 +232,10 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         if (project.clips.isEmpty()) { updatePlayIcon(); return }
 
         val (w, h) = project.aspect.canvas(720)
+        val ready = Bridges.needed(project).mapNotNull { i -> Bridges.cached(this, project, i, w, h, false)?.let { i to it } }.toMap()
+        if (ready.size < Bridges.needed(project).size) renderPreviewBridges()
         val composition = try {
-            CompositionFactory.build(this, store, project, BuildOptions(w, h, false, previewTier < 1, previewTier < 2))
+            CompositionFactory.build(this, store, project, BuildOptions(w, h, false, previewTier < 1, previewTier < 2, ready))
         } catch (e: Exception) {
             toast("تعذّر تجهيز المعاينة: ${e.message}")
             return
@@ -271,6 +278,32 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         updatePlayIcon()
     }
 
+    /** Renders missing overlap transitions in the background, then refreshes the preview. */
+    private fun renderPreviewBridges() {
+        if (bridgeJob?.isActive == true) return
+        val (w, h) = project.aspect.canvas(720)
+        bridgeJob = lifecycleScope.launch {
+            b.bridgeStatus.visibility = View.VISIBLE
+            var rendered = false
+            for (i in Bridges.needed(project)) {
+                if (i >= project.clips.size - 1) break
+                if (Bridges.cached(this@EditorActivity, project, i, w, h, false) != null) continue
+                b.bridgeStatus.text = "✨ جاري تجهيز الدمج ${i + 1}…"
+                val f = Bridges.render(this@EditorActivity, store, project, i, w, h, false, 8_000_000)
+                if (f == null) {
+                    if (!com.mawj.editor.model.Caps.overlapSupported) {
+                        toast("جهازك ما يدعم الدمج المتداخل — استبدلناه بتلاشي ناعم")
+                        refreshAll()
+                    }
+                    break
+                }
+                rendered = true
+            }
+            b.bridgeStatus.visibility = View.GONE
+            if (rendered || !com.mawj.editor.model.Caps.overlapSupported) rebuildPreview()
+        }
+    }
+
     private val positionLoop = object : Runnable {
         override fun run() {
             val p = player ?: return
@@ -300,7 +333,8 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
     }
 
     private fun updateTime() {
-        b.timeText.text = fmt(b.timeline.positionUs) + " / " + fmt(project.durationUs)
+        b.timeText.text = fmt(b.timeline.positionUs)
+        b.durationText.text = fmt(project.durationUs)
     }
 
     private fun fmt(us: Long): String {
@@ -361,21 +395,26 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
 
     // ---------- Tools ----------
 
-    private fun tool(icon: String, label: String, onClick: () -> Unit) {
+    private fun tool(icon: Int, label: String, accent: Boolean = false, onClick: () -> Unit) {
         val item = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(dp(6), dp(4), dp(6), dp(4))
-            background = getDrawable(android.R.drawable.list_selector_background)
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(4), dp(2), dp(4), dp(2))
             isClickable = true
             setOnClickListener { onClick() }
         }
-        item.addView(TextView(this).apply { text = icon; textSize = 20f; gravity = Gravity.CENTER })
+        item.addView(ImageView(this).apply {
+            setImageResource(icon)
+            setBackgroundResource(if (accent) R.drawable.accent_circle else R.drawable.glass_ripple_circle)
+            setPadding(dp(11), dp(11), dp(11), dp(11))
+            isDuplicateParentStateEnabled = true
+        }, LinearLayout.LayoutParams(dp(46), dp(46)))
         item.addView(TextView(this).apply {
             text = label; textSize = 11f; gravity = Gravity.CENTER
-            setTextColor(0xFFDADAE5.toInt()); maxLines = 1
+            setTextColor(0xE6FFFFFF.toInt()); maxLines = 1
+            setPadding(0, dp(5), 0, 0)
         })
-        b.tools.addView(item, LinearLayout.LayoutParams(dp(70), LinearLayout.LayoutParams.WRAP_CONTENT))
+        b.tools.addView(item, LinearLayout.LayoutParams(dp(72), LinearLayout.LayoutParams.WRAP_CONTENT))
     }
 
     private fun buildTools() {
@@ -384,43 +423,47 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         val audio = project.audios.getOrNull(selAudio)
         when {
             clip != null -> {
-                tool("✖", "إلغاء التحديد") { onEmptyTap() }
-                tool("✂️", "تقسيم") { splitClip() }
+                b.toolsTitle.text = (if (clip.type == ClipType.IMAGE) "صورة " else "مقطع ") + "${selClip + 1} • " + secs(clip.timelineUs / 1e6f)
+                tool(R.drawable.i_close, "إغلاق") { onEmptyTap() }
+                tool(R.drawable.i_split, "تقسيم") { splitClip() }
                 if (clip.type == ClipType.VIDEO) {
-                    tool("↔️", "قص") { trimClip(clip) }
-                    tool("⏩", "السرعة") { speedClip(clip) }
-                    tool("🔊", "الصوت") { volumeClip(clip) }
-                    tool("🎵", "استخراج الصوت") { extractAudio(clip) }
+                    tool(R.drawable.i_trim, "قص") { trimClip(clip) }
+                    tool(R.drawable.i_speed, "السرعة") { speedClip(clip) }
+                    tool(if (clip.volume == 0f) R.drawable.i_mute else R.drawable.i_volume, "الصوت") { volumeClip(clip) }
+                    tool(R.drawable.i_wave, "استخراج الصوت") { extractAudio(clip) }
                 } else {
-                    tool("⏱️", "المدة") { imageDuration(clip) }
+                    tool(R.drawable.i_timer, "المدة") { imageDuration(clip) }
                 }
-                tool("🎨", "فلاتر") { filters(clip) }
-                tool("🔤", "نص") { textClip(clip) }
-                tool("🔄", "تدوير") { edit { clip.rotation = (clip.rotation + 90) % 360 } }
-                tool("🪞", "قلب") { edit { clip.mirror = !clip.mirror } }
-                tool("⛶", if (clip.fill) "احتواء" else "ملء الشاشة") { edit { clip.fill = !clip.fill } }
-                if (selClip < project.clips.lastIndex) tool("✨", "انتقال") { showTransition(selClip) }
-                tool("◀", "تحريك") { moveClip(-1) }
-                tool("▶", "تحريك") { moveClip(1) }
-                tool("📑", "تكرار") { duplicateClip() }
-                tool("🗑️", "حذف") { deleteClip() }
+                if (selClip < project.clips.lastIndex) tool(R.drawable.i_sparkles, "انتقال", accent = true) { showTransition(selClip) }
+                tool(R.drawable.i_sliders, "فلاتر") { filters(clip) }
+                tool(R.drawable.i_text, "نص") { textClip(clip) }
+                tool(R.drawable.i_rotate, "تدوير") { edit { clip.rotation = (clip.rotation + 90) % 360 } }
+                tool(R.drawable.i_flip, "قلب") { edit { clip.mirror = !clip.mirror } }
+                tool(R.drawable.i_fit, if (clip.fill) "احتواء" else "ملء الشاشة") { edit { clip.fill = !clip.fill } }
+                tool(R.drawable.i_left, "تحريك") { moveClip(-1) }
+                tool(R.drawable.i_right, "تحريك") { moveClip(1) }
+                tool(R.drawable.i_copy, "تكرار") { duplicateClip() }
+                tool(R.drawable.i_trash, "حذف") { deleteClip() }
             }
             audio != null -> {
-                tool("✖", "إلغاء التحديد") { onEmptyTap() }
-                tool("🔊", "الصوت") { volumeAudio(audio) }
-                tool("🌗", "تلاشي") { fadeAudio(audio) }
-                tool("✂️", "تقسيم") { splitAudio() }
-                tool("↔️", "قص") { trimAudio(audio) }
-                tool("📍", "نقل هنا") { edit { audio.startAtUs = b.timeline.positionUs } }
-                tool("📑", "تكرار") { duplicateAudio(audio) }
-                tool("🗑️", "حذف") { edit { project.audios.removeAt(selAudio); selAudio = -1 } }
+                b.toolsTitle.text = "♪ ${audio.label} • " + secs(audio.lengthUs / 1e6f)
+                tool(R.drawable.i_close, "إغلاق") { onEmptyTap() }
+                tool(R.drawable.i_volume, "الصوت") { volumeAudio(audio) }
+                tool(R.drawable.i_fade, "تلاشي") { fadeAudio(audio) }
+                tool(R.drawable.i_split, "تقسيم") { splitAudio() }
+                tool(R.drawable.i_trim, "قص") { trimAudio(audio) }
+                tool(R.drawable.i_pin, "نقل هنا") { edit { audio.startAtUs = b.timeline.positionUs } }
+                tool(R.drawable.i_copy, "تكرار") { duplicateAudio(audio) }
+                tool(R.drawable.i_trash, "حذف") { edit { project.audios.removeAt(selAudio); selAudio = -1 } }
             }
             else -> {
-                tool("🎬", "إضافة مقطع") { launchMediaPicker() }
-                tool("🎵", "إضافة صوت") { pickAudio.launch(arrayOf("audio/*")) }
-                tool("📐", "النسبة") { aspectSheet() }
-                if (project.clips.size > 1) tool("✨", "انتقال للكل") { showTransition(-1) }
-                tool("✂️", "تقسيم") { splitClip() }
+                b.toolsTitle.text = "الأدوات • اضغط على مقطع أو صوت لتعديله"
+                tool(R.drawable.i_film, "إضافة مقطع", accent = true) { launchMediaPicker() }
+                tool(R.drawable.i_music, "إضافة صوت") { pickAudio.launch(arrayOf("audio/*")) }
+                if (project.clips.size > 1) tool(R.drawable.i_sparkles, "انتقال للكل") { showTransition(-1) }
+                tool(R.drawable.i_split, "تقسيم") { splitClip() }
+                tool(R.drawable.i_ratio, "النسبة") { aspectSheet() }
+                tool(R.drawable.i_send, "تيك توك HD") { showExport() }
             }
         }
     }
@@ -434,6 +477,7 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         val bar = LinearProgressIndicator(this).apply { isIndeterminate = true }
         val box = LinearLayout(this).apply { setPadding(dp(24), dp(12), dp(24), dp(8)); addView(bar, LinearLayout.LayoutParams(-1, -2)) }
         val d = MaterialAlertDialogBuilder(this).setTitle(title).setView(box).setCancelable(false).show()
+        Glass.style(d)
         return d to bar
     }
 
@@ -666,21 +710,31 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         val all = index < 0
         val clip = if (all) project.clips.firstOrNull() else project.clips.getOrNull(index)
         if (clip == null) return
-        val sheet = Sheet(this, if (all) "انتقال لكل المقاطع" else "الانتقال بين المقطع ${index + 1} و ${index + 2}")
+        val sheet = Sheet(this, if (all) "انتقال لكل المقاطع" else "الانتقال بين ${index + 1} و ${index + 2}",
+            "اختر النوع والمدة، والمعاينة تتحدث تلقائياً")
         var kind = clip.transition
         var durUs = clip.transitionUs
-        sheet.chips("النوع", Transition.entries.map { it.label }, kind.ordinal) { kind = Transition.entries[it] }
+        val overlapKinds = Transition.entries.filter { it.overlap }
+        val motionKinds = Transition.entries.filter { !it.overlap }
+        lateinit var g1: com.google.android.material.chip.ChipGroup
+        lateinit var g2: com.google.android.material.chip.ChipGroup
+        g1 = sheet.chips("✦ دمج احترافي (المقطعين فوق بعض)", overlapKinds.map { it.label }, overlapKinds.indexOf(kind), required = false) {
+            kind = overlapKinds[it]; g2.clearCheck()
+        }
+        g2 = sheet.chips("حركات القطع", motionKinds.map { it.label }, motionKinds.indexOf(kind), required = false) {
+            kind = motionKinds[it]; g1.clearCheck()
+        }
         sheet.slider("المدة", 0.2f, 2f, durUs / 1e6f, { secs(it) }, 0.1f) { durUs = (it * 1e6).toLong() }
+        if (!com.mawj.editor.model.Caps.overlapSupported) sheet.note("ℹ️ جهازك ما يدعم الدمج المتداخل؛ بيتحول لتلاشي ناعم.")
         sheet.button("تطبيق") {
             edit {
                 val targets = if (all) project.clips.dropLast(1) else listOf(clip)
                 targets.forEach { it.transition = kind; it.transitionUs = durUs }
             }
             sheet.dismiss()
-            // Jump just before the cut so the user sees it.
-            if (!all) {
+            if (!all && index + 1 < project.clips.size) {
                 val cut = project.clipStartUs(index + 1)
-                val pos = (cut - durUs).coerceAtLeast(0)
+                val pos = (cut - 300_000).coerceAtLeast(0)
                 b.timeline.setPosition(pos); player?.seekTo(pos / 1000); updateTime()
             }
         }
@@ -768,63 +822,98 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
 
     private fun showExport() {
         if (project.clips.isEmpty()) return
-        val sheet = Sheet(this, "تصدير الفيديو")
+        val sheet = Sheet(this, "تصدير", "اختر وين بتنشر المقطع")
+        fun select(t: Boolean) {
+            sheet.dismiss()
+            showExportWith(t)
+        }
+        sheet.option(R.drawable.i_send, "تيك توك HD  ⭐", "1080×1920 • H.264 • معدل بت عالي • بدون فقد بعد الرفع", true) { select(true) }
+        sheet.option(R.drawable.i_sliders, "مخصص", "اختر الدقة (حتى 4K) والجودة والترميز", false) { select(false) }
+        sheet.show()
+    }
+
+    private fun showExportWith(tiktok: Boolean) {
+        if (tiktok) {
+            val sheet = Sheet(this, "تيك توك HD", "إعدادات موج HD الجاهزة لأعلى جودة على تيك توك")
+            sheet.note("✅ دقة 1080p بالضبط (اللي يعرضها تيك توك)\n✅ ترميز H.264 بمعدل بت عالي جداً\n✅ تحويل HDR إلى SDR عشان الألوان ما تبهت\n✅ بعد الحفظ نوديك لتيك توك خطوة بخطوة")
+            if (project.aspect != Aspect.R9_16) sheet.note("⚠️ نسبة المشروع ${project.aspect.label} — الأفضل للتيك توك 9:16 (غيرها من أداة «النسبة»).")
+            sheet.button("صدّر لتيك توك") {
+                sheet.dismiss()
+                export(1080, 0.5, false, true)
+            }
+            sheet.show()
+            return
+        }
+        val sheet = Sheet(this, "تصدير مخصص")
         val res = listOf(720, 1080, 1440, 2160)
-        val resLabels = listOf("720p", "1080p (تيك توك)", "2K", "4K")
         var r = 1
         var quality = 1
-        sheet.chips("الدقة", resLabels, r) { r = it }
-        sheet.chips("الجودة", listOf("عالية", "قصوى"), quality) { quality = it }
-        sheet.text("💡 للتيك توك: 1080p + قصوى، وفعّل «السماح بالتحميلات عالية الجودة» وقت النشر.")
-        sheet.button("تصدير وحفظ في الاستديو") {
+        var hevc = false
+        sheet.chips("الدقة", listOf("720p", "1080p", "2K", "4K"), r) { r = it }
+        sheet.chips("الجودة", listOf("عالية", "قصوى", "استديو"), quality) { quality = it }
+        sheet.chips("الترميز", listOf("H.264 (متوافق)", "H.265 (أصغر)"), 0) { hevc = it == 1 }
+        sheet.button("تصدير وحفظ") {
             sheet.dismiss()
-            export(res[r], if (quality == 0) 0.25 else 0.45)
+            export(res[r], listOf(0.25, 0.4, 0.6)[quality], hevc, false)
         }
         sheet.show()
     }
 
-    private fun export(shortSide: Int, bpp: Double) {
+    private fun export(shortSide: Int, bpp: Double, hevc: Boolean, tiktok: Boolean) {
         player?.pause()
         player?.release(); player = null
         b.playerView.player = null
+        bridgeJob?.cancel()
+        b.bridgeStatus.visibility = View.GONE
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        val bar = LinearProgressIndicator(this).apply { max = 100 }
-        val label = TextView(this).apply { text = "0%"; setPadding(0, dp(8), 0, 0) }
+        val bar = LinearProgressIndicator(this).apply { max = 100; trackCornerRadius = dp(4); trackThickness = dp(8) }
+        val label = TextView(this).apply { text = "تجهيز…"; setPadding(0, dp(10), 0, 0); setTextColor(0xCCFFFFFF.toInt()) }
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(24), dp(12), dp(24), dp(8))
             addView(bar, LinearLayout.LayoutParams(-1, -2)); addView(label)
         }
         val dialog = MaterialAlertDialogBuilder(this)
-            .setTitle("جاري التصدير…").setView(box).setCancelable(false)
+            .setTitle(if (tiktok) "تصدير تيك توك HD…" else "جاري التصدير…").setView(box).setCancelable(false)
             .setNegativeButton("إلغاء") { _, _ -> exportJob?.cancel() }
             .show()
+        Glass.style(dialog)
 
         val (w, h) = project.aspect.canvas(shortSide)
-        val bitrate = (w.toDouble() * h * 30 * bpp).toLong().coerceIn(6_000_000, 120_000_000).toInt()
+        val bitrate = (w.toDouble() * h * 30 * bpp).toLong().coerceIn(8_000_000, 150_000_000).toInt()
         val out = File(cacheDir, "export.mp4").apply { delete() }
         exportJob = lifecycleScope.launch {
             try {
-                val comp = CompositionFactory.build(this@EditorActivity, store, project, BuildOptions(w, h, true))
-                MediaJobs.exportVideo(this@EditorActivity, comp, bitrate, out) { p ->
+                // 1) Render overlapping transitions at full quality.
+                val needed = Bridges.needed(project)
+                val bridges = HashMap<Int, File>()
+                needed.forEachIndexed { n, i ->
+                    label.text = "تجهيز الدمج ${n + 1}/${needed.size}…"
+                    bar.setProgressCompat(n * 100 / needed.size.coerceAtLeast(1), true)
+                    Bridges.render(this@EditorActivity, store, project, i, w, h, true, bitrate)?.let { bridges[i] = it }
+                }
+                // 2) Export the timeline.
+                val comp = CompositionFactory.build(this@EditorActivity, store, project, BuildOptions(w, h, true, bridges = bridges))
+                MediaJobs.exportVideo(this@EditorActivity, comp, bitrate, out, hevc) { p ->
                     bar.setProgressCompat(p, true); label.text = "$p%"
                 }
                 label.text = "جاري الحفظ في الاستديو…"
-                val name = "MawjEdit_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date()) + ".mp4"
+                val name = (if (tiktok) "MawjTikTok_" else "MawjEdit_") + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date()) + ".mp4"
                 val uri = withContext(Dispatchers.IO) { MediaJobs.saveToGallery(this@EditorActivity, out, name) }
                 val sizeMb = out.length() / 1e6
                 out.delete()
                 dialog.dismiss()
-                showExportDone(uri, sizeMb, w, h)
+                if (tiktok) showTikTokGuide(uri) else showExportDone(uri, sizeMb, w, h)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 dialog.dismiss(); out.delete(); toast("تم إلغاء التصدير")
             } catch (e: Exception) {
                 dialog.dismiss(); out.delete()
-                MaterialAlertDialogBuilder(this@EditorActivity)
+                val d = MaterialAlertDialogBuilder(this@EditorActivity)
                     .setTitle("تعذّر التصدير")
                     .setMessage("${e.message}\n\nجرّب دقة أقل (1080p).")
                     .setPositiveButton("حسناً", null).show()
+                Glass.style(d)
             } finally {
                 window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 rebuildPreview()
@@ -832,24 +921,38 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         }
     }
 
+    private fun shareIntent(uri: Uri) = Intent(Intent.ACTION_SEND).apply {
+        type = "video/mp4"
+        putExtra(Intent.EXTRA_STREAM, uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+
+    private fun openTikTok(uri: Uri) {
+        val send = shareIntent(uri)
+        val pkg = listOf("com.zhiliaoapp.musically", "com.ss.android.ugc.trill")
+            .firstOrNull { Intent(send).setPackage(it).resolveActivity(packageManager) != null }
+        if (pkg != null) startActivity(Intent(send).setPackage(pkg))
+        else { toast("تيك توك غير مثبت"); startActivity(Intent.createChooser(send, "مشاركة")) }
+    }
+
+    /** Step-by-step guide so TikTok keeps the HD quality. */
+    private fun showTikTokGuide(uri: Uri) {
+        val sheet = Sheet(this, "جاهز للرفع ✅", "انحفظ في Movies/Mawj Edit • اتبع الخطوات عشان تيك توك ما ينزّل الجودة")
+        sheet.note("١. اضغط «افتح تيك توك» تحت — المقطع يفتح فيه مباشرة.")
+        sheet.note("٢. اضغط «التالي» إلى أن توصل لصفحة النشر (إضافة وصف).")
+        sheet.note("٣. اضغط «المزيد من الخيارات» ← فعّل «السماح بالتحميلات عالية الجودة» (يصير أزرق).")
+        sheet.note("٤. لا تضيف فلاتر أو تأثيرات من تيك توك، وانشر وأنت على واي فاي.")
+        sheet.note("💡 أول دقايق بعد النشر ممكن تطلع الجودة أقل — تيك توك يجهّز نسخة HD بعدها بشوي.")
+        sheet.button("افتح تيك توك") { sheet.dismiss(); openTikTok(uri) }
+        sheet.button("مشاركة لتطبيق ثاني", outlined = true) { startActivity(Intent.createChooser(shareIntent(uri), "مشاركة")) }
+        sheet.show()
+    }
+
     private fun showExportDone(uri: Uri, sizeMb: Double, w: Int, h: Int) {
-        val send = Intent(Intent.ACTION_SEND).apply {
-            type = "video/mp4"
-            putExtra(Intent.EXTRA_STREAM, uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        MaterialAlertDialogBuilder(this)
-            .setTitle("تم التصدير ✅")
-            .setMessage(String.format(Locale.US, "انحفظ في Movies/Mawj Edit\n%d×%d • %.1f MB", w, h, sizeMb))
-            .setPositiveButton("ارفع على تيك توك") { _, _ ->
-                val pkg = listOf("com.zhiliaoapp.musically", "com.ss.android.ugc.trill")
-                    .firstOrNull { Intent(send).setPackage(it).resolveActivity(packageManager) != null }
-                if (pkg != null) startActivity(Intent(send).setPackage(pkg))
-                else startActivity(Intent.createChooser(send, "مشاركة"))
-            }
-            .setNeutralButton("مشاركة") { _, _ -> startActivity(Intent.createChooser(send, "مشاركة")) }
-            .setNegativeButton("تم", null)
-            .show()
+        val sheet = Sheet(this, "تم التصدير ✅", String.format(Locale.US, "Movies/Mawj Edit • %d×%d • %.1f MB", w, h, sizeMb))
+        sheet.button("ارفع على تيك توك (بالخطوات)") { sheet.dismiss(); showTikTokGuide(uri) }
+        sheet.button("مشاركة", outlined = true) { startActivity(Intent.createChooser(shareIntent(uri), "مشاركة")) }
+        sheet.show()
     }
 
     // ---------- Thumbnails ----------

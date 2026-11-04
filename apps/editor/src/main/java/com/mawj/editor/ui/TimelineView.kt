@@ -58,7 +58,7 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
     private val audioTop get() = videoTop + videoH + 12 * d
     private val laneH = 30 * d
     private val laneGap = 5 * d
-    private val trSize = 24 * d
+    private val trSize = 26 * d
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; textSize = 11 * d }
@@ -80,7 +80,7 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
 
     fun setData(v: List<VBlock>, a: List<ABlock>) {
         blocks = v
-        totalUs = v.sumOf { it.durUs }
+        totalUs = v.maxOfOrNull { it.startUs + it.durUs } ?: 0L
         // Greedy lane assignment so overlapping audio clips stack.
         val laneEnds = mutableListOf<Long>()
         a.sortedBy { it.startUs }.forEach { b ->
@@ -113,20 +113,17 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
     // ---------- Drawing ----------
 
     override fun onDraw(canvas: Canvas) {
-        canvas.drawColor(0xFF121218.toInt())
         drawRuler(canvas)
 
-        var t = 0L
         blocks.forEachIndexed { i, b ->
-            val l = x(t) + 1 * d
-            val r = x(t + b.durUs) - 1 * d
-            t += b.durUs
+            val l = x(b.startUs) + 1 * d
+            val r = x(b.startUs + b.durUs) - 1 * d
             if (r < 0 || l > width) return@forEachIndexed
             rect.set(l, videoTop, r, videoTop + videoH)
             canvas.save()
             path.reset(); path.addRoundRect(rect, 8 * d, 8 * d, Path.Direction.CW)
             canvas.clipPath(path)
-            paint.color = 0xFF2A2A35.toInt()
+            paint.color = 0xFF221F33.toInt()
             canvas.drawRect(rect, paint)
             val thumb = thumbProvider(b.key)
             if (thumb != null) {
@@ -149,23 +146,25 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
             canvas.drawRoundRect(l + 4 * d, videoTop + videoH - 18 * d, l + 12 * d + tw, videoTop + videoH - 3 * d, 4 * d, 4 * d, paint)
             canvas.drawText(label, l + 8 * d, videoTop + videoH - 7 * d, text)
             canvas.restore()
-            if (i == selectedClip) canvas.drawRoundRect(rect, 8 * d, 8 * d, stroke)
+            stroke.color = if (i == selectedClip) 0xFFFF2D7A.toInt() else 0x40FFFFFF
+            stroke.strokeWidth = if (i == selectedClip) 3 * d else 1 * d
+            canvas.drawRoundRect(rect, 8 * d, 8 * d, stroke)
         }
 
         // Transition markers between clips
-        t = 0L
         for (i in 0 until blocks.size - 1) {
-            t += blocks[i].durUs
-            val cx = x(t)
+            val cx = markerX(i)
             if (cx < -trSize || cx > width + trSize) continue
             transitionRect(cx, rect)
-            val has = blocks[i].transition != Transition.NONE
-            paint.color = if (has) 0xFFFFFFFF.toInt() else 0xFF3A3A48.toInt()
-            canvas.drawRoundRect(rect, 6 * d, 6 * d, paint)
-            text.color = if (has) Color.BLACK else Color.WHITE
-            val s = if (has) "⇄" else "+"
-            canvas.drawText(s, cx - text.measureText(s) / 2, rect.centerY() + 4 * d, text)
+            val tr = blocks[i].transition
+            val has = tr != Transition.NONE
+            paint.color = if (has) 0xFFFF2D7A.toInt() else 0xE6262338.toInt()
+            canvas.drawOval(rect, paint)
+            stroke.color = 0x80FFFFFF.toInt(); stroke.strokeWidth = 1.5f * d
+            canvas.drawOval(rect, stroke)
             text.color = Color.WHITE
+            val s = if (!has) "+" else if (tr.overlap) "✦" else "⇄"
+            canvas.drawText(s, cx - text.measureText(s) / 2, rect.centerY() + 4 * d, text)
         }
 
         // Audio lanes
@@ -174,24 +173,33 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
             val top = audioTop + a.lane * (laneH + laneGap)
             rect.set(x(start), top, x(start + a.durUs), top + laneH)
             if (rect.right < 0 || rect.left > width) return@forEachIndexed
-            paint.color = if (i == dragAudio) 0xFFB794F6.toInt() else 0xFF6D45D9.toInt()
-            canvas.drawRoundRect(rect, 6 * d, 6 * d, paint)
+            paint.shader = android.graphics.LinearGradient(rect.left, 0f, rect.right, 0f,
+                if (i == dragAudio) 0xFFC4A8FF.toInt() else 0xFF7C4DFF.toInt(), 0xFFFF2D7A.toInt(), android.graphics.Shader.TileMode.CLAMP)
+            paint.alpha = if (i == dragAudio) 255 else 210
+            canvas.drawRoundRect(rect, 8 * d, 8 * d, paint)
+            paint.shader = null
+            paint.alpha = 255
             canvas.save()
             canvas.clipRect(rect)
             canvas.drawText("♪ " + a.label, rect.left + 6 * d, rect.centerY() + 4 * d, text)
             canvas.restore()
-            if (i == selectedAudio) canvas.drawRoundRect(rect, 6 * d, 6 * d, stroke)
+            if (i == selectedAudio) {
+                stroke.color = Color.WHITE; stroke.strokeWidth = 2.5f * d
+                canvas.drawRoundRect(rect, 8 * d, 8 * d, stroke)
+            }
         }
         if (audios.isEmpty()) {
-            text.color = 0xFF77778A.toInt()
-            canvas.drawText("مسار الصوت — أضف صوت من الأدوات", width / 2f + 10 * d, audioTop + laneH / 2 + 4 * d, text)
+            text.color = 0x80FFFFFF.toInt()
+            canvas.drawText("♪ مسار الصوت — أضف صوت أو استخرجه من مقطع", width / 2f + 10 * d, audioTop + laneH / 2 + 4 * d, text)
             text.color = Color.WHITE
         }
 
-        // Playhead
+        // Playhead with soft glow
+        paint.color = 0x55FF2D7A
+        canvas.drawRect(width / 2f - 3 * d, rulerH - 4 * d, width / 2f + 3 * d, height.toFloat(), paint)
         paint.color = Color.WHITE
         canvas.drawRect(width / 2f - 1 * d, rulerH - 4 * d, width / 2f + 1 * d, height.toFloat(), paint)
-        canvas.drawCircle(width / 2f, rulerH - 4 * d, 4 * d, paint)
+        canvas.drawCircle(width / 2f, rulerH - 4 * d, 5 * d, paint)
     }
 
     private fun drawRuler(canvas: Canvas) {
@@ -200,8 +208,8 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
         val step = steps.firstOrNull { it * pxPerSec >= minLabelPx } ?: 60
         val firstSec = max(0L, usAt(0f) / 1_000_000 / step * step)
         val lastSec = min(totalUs / 1_000_000 + 1, usAt(width.toFloat()) / 1_000_000 + step)
-        text.color = 0xFF8A8A9A.toInt()
-        paint.color = 0xFF55556A.toInt()
+        text.color = 0x80FFFFFF.toInt()
+        paint.color = 0x55FFFFFF
         var s = firstSec
         while (s <= lastSec) {
             val px = x(s * 1_000_000)
@@ -210,6 +218,14 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
             s += step
         }
         text.color = Color.WHITE
+    }
+
+    /** Marker sits in the middle of the overlap (or on the cut). */
+    private fun markerX(i: Int): Float {
+        val a = blocks[i]
+        val b = blocks[i + 1]
+        val end = a.startUs + a.durUs
+        return x((b.startUs + end) / 2)
     }
 
     private fun transitionRect(cx: Float, out: RectF) {
@@ -327,18 +343,15 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
     private fun hitTest(px: Float, py: Float) {
         val l = listener ?: return
         // Transition markers first (they sit on top of clips).
-        var t = 0L
         for (i in 0 until blocks.size - 1) {
-            t += blocks[i].durUs
-            transitionRect(x(t), rect)
+            transitionRect(markerX(i), rect)
             rect.inset(-6 * d, -6 * d)
             if (rect.contains(px, py)) { l.onTransitionTap(i); return }
         }
         if (py in videoTop..(videoTop + videoH)) {
-            t = 0L
-            blocks.forEachIndexed { i, b ->
-                if (px >= x(t) && px <= x(t + b.durUs)) { l.onClipTap(i); return }
-                t += b.durUs
+            for (i in blocks.indices.reversed()) {
+                val b = blocks[i]
+                if (px >= x(b.startUs) && px <= x(b.startUs + b.durUs)) { l.onClipTap(i); return }
             }
         }
         val a = audioAt(px, py)

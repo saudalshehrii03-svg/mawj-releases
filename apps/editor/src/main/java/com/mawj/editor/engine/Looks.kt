@@ -279,7 +279,6 @@ private class CanvasProgram(
         program.setFloatsUniform("uBg", floatArrayOf(0.5f - bw / 2, 0.5f - bh / 2, bw, bh))
         program.setFloatUniform("uMode", mode)
         program.setFloatsUniform("uColor", color)
-        program.setFloatsUniform("uTexel", floatArrayOf(1f / iw, 1f / ih))
         return Size(outW, outH)
     }
 
@@ -303,7 +302,7 @@ uniform vec4 uFg;
 uniform vec4 uBg;
 uniform float uMode;
 uniform vec3 uColor;
-uniform vec2 uTexel;
+
 varying vec2 vTexSamplingCoord;
 void main() {
   vec2 uv = vTexSamplingCoord;

@@ -83,6 +83,8 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
 
     private var player: CompositionPlayer? = null
     private var previewTier = 0
+    /** For tests: true if the preview had to drop effects after an error. */
+    val previewDegraded: Boolean get() = previewTier > 0
     private val handler = Handler(Looper.getMainLooper())
     private var lastSeekAt = 0L
     private var exportJob: Job? = null

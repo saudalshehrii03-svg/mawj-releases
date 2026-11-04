@@ -113,8 +113,10 @@ class EngineTest {
             sc.onActivity { a -> a.findViewById<android.view.View>(R.id.playButton).performClick() }
             Thread.sleep(2500)
             var after = 0L
-            sc.onActivity { a -> after = a.findViewById<TimelineView>(R.id.timeline).positionUs }
-            Log.i(tag, "pro preview position=$after")
+            var degraded = false
+            sc.onActivity { a -> after = a.findViewById<TimelineView>(R.id.timeline).positionUs; degraded = a.previewDegraded }
+            Log.i(tag, "pro preview position=$after degraded=$degraded")
+            assertTrue("preview fell back to simplified mode (an effect failed)", !degraded)
             assertTrue("pro preview did not advance (pos=$after)", after > 500_000)
         }
     }

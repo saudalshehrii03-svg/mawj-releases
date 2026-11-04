@@ -156,6 +156,8 @@ object CompositionFactory {
         lenUs: Long,
         plan: TransitionPlan?,
         gain: AudioProcessor,
+        removeAudio: Boolean = false,
+        removeVideo: Boolean = false,
     ): EditedMediaItem {
         val uri = Uri.fromFile(store.mediaFile(project.id, c.file))
         val audioFx = ArrayList<AudioProcessor>()
@@ -206,7 +208,9 @@ object CompositionFactory {
             }
         }
 
-        val b = EditedMediaItem.Builder(mediaItem).setEffects(Effects(audioFx, videoFx))
+        val b = EditedMediaItem.Builder(mediaItem).setEffects(Effects(audioFx, if (removeVideo) emptyList() else videoFx))
+        if (removeAudio) b.setRemoveAudio(true)
+        if (removeVideo) b.setRemoveVideo(true)
         if (c.type == ClipType.IMAGE) b.setDurationUs(lenUs.coerceAtLeast(40_000)).setFrameRate(30)
         else b.setDurationUs(c.sourceDurationUs)
         return b.build()

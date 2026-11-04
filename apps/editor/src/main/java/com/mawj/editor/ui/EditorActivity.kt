@@ -452,18 +452,15 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
                 if (Bridges.cached(this@EditorActivity, project, i, w, h, false) != null) continue
                 b.bridgeStatus.text = L.t("✨ جاري تجهيز الدمج ${i + 1}…", "✨ Preparing transition ${i + 1}…")
                 Fonts.apply(b.bridgeStatus)
-                val f = Bridges.render(this@EditorActivity, store, project, i, w, h, false, 8_000_000)
+                val f = Bridges.render(this@EditorActivity, store, project, i, w, h, false, 10_000_000)
                 if (f == null) {
-                    if (!com.mawj.editor.model.Caps.overlapSupported) {
-                        toast(L.t("جهازك ما يدعم الدمج المتداخل — استبدلناه بتلاشي ناعم", "Your device can't overlap clips — using a smooth fade instead"))
-                        refreshAll()
-                    }
-                    break
+                    toast(L.t("تعذّر تجهيز الدمج ${i + 1}: ", "Couldn't prepare transition ${i + 1}: ") + Bridges.lastError)
+                    continue
                 }
                 rendered = true
             }
             b.bridgeStatus.visibility = View.GONE
-            if (rendered || !com.mawj.editor.model.Caps.overlapSupported) rebuildPreview()
+            if (rendered) rebuildPreview()
         }
     }
 
@@ -1171,6 +1168,7 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
                     bar.setProgressCompat(n * 100 / needed.size.coerceAtLeast(1), true)
                     Bridges.render(this@EditorActivity, store, project, i, w, h, true, bitrate)?.let { bridges[i] = it }
                 }
+                if (bridges.size < needed.size) toast(L.t("بعض الانتقالات ما تجهزت: ", "Some transitions failed: ") + Bridges.lastError)
                 // 2) Export the timeline.
                 val comp = CompositionFactory.build(this@EditorActivity, store, project, BuildOptions(w, h, true, bridges = bridges))
                 MediaJobs.exportVideo(this@EditorActivity, comp, bitrate, out, hevc) { p ->

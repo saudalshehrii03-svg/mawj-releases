@@ -1,4 +1,4 @@
-name: Build Mawj tools (HD + Audio)
+name: Build Mawj tools (Edit + HD + Audio)
 
 on:
   push:
@@ -58,7 +58,28 @@ jobs:
           mkdir -p out
           cp apps/hdupload/build/outputs/apk/release/*.apk "out/Mawj-HD-1.0.${VERSION_CODE}.apk"
           cp apps/audioextract/build/outputs/apk/release/*.apk "out/Mawj-Audio-1.0.${VERSION_CODE}.apk"
+          cp apps/editor/build/outputs/apk/release/*.apk "out/Mawj-Edit-1.0.${VERSION_CODE}.apk"
           ls -la out
+
+      - name: Signing certificate fingerprint (for Google sign-in setup)
+        run: |
+          if [ -n "${SIGNING_KEYSTORE_PATH:-}" ]; then
+            KS="$SIGNING_KEYSTORE_PATH"; PASS="${{ secrets.SIGNING_STORE_PASSWORD }}"
+          else
+            KS="$HOME/.android/debug.keystore"; PASS="android"
+          fi
+          SHA1=$(keytool -list -v -keystore "$KS" -storepass "$PASS" 2>/dev/null | grep -m1 "SHA1:" | awk '{print $2}')
+          echo "SHA-1: $SHA1"
+          cat > notes.md <<NOTES
+          **Mawj-Edit** — موج مونتاج: محرر فيديو (تقسيم، قص، سرعة، صوت، استخراج الصوت، انتقالات، فلاتر، نص، تصدير 4K، نسخ احتياطي على Google Drive).
+          **Mawj-HD** — تصدير المقطع بجودة عالية (1080p / 2K / 4K) ورفعه على تيك توك.
+          **Mawj-Audio** — تحويل أي مقطع إلى ملف صوتي (M4A أصلي بدون فقد / WAV / AAC).
+
+          التثبيت: نزّل ملف الـ APK من الجوال ← افتحه ← اسمح بالتثبيت من مصادر غير معروفة.
+
+          بصمة التوقيع SHA-1 (لإعداد تسجيل الدخول بجوجل): \`$SHA1\`
+          NOTES
+          cat notes.md
 
       - uses: actions/upload-artifact@v4
         with:
@@ -70,12 +91,8 @@ jobs:
         with:
           tag_name: tools-v1.0.${{ github.run_number }}
           target_commitish: ${{ github.sha }}
-          name: "أدوات موج 1.0.${{ github.run_number }} — موج HD + موج صوت"
-          body: |
-            **Mawj-HD** — تصدير المقطع بجودة عالية (1080p / 2K / 4K) وحفظه في الاستديو ورفعه على تيك توك.
-            **Mawj-Audio** — تحويل أي مقطع إلى ملف صوتي (M4A أصلي بدون فقد / WAV / AAC).
-
-            التثبيت: نزّل ملف الـ APK من الجوال ← افتحه ← اسمح بالتثبيت من مصادر غير معروفة.
+          name: "أدوات موج 1.0.${{ github.run_number }} — مونتاج + HD + صوت"
+          body_path: notes.md
           files: out/*.apk
           # Never take over "Latest": the main Mawj app's updater relies on it.
           prerelease: true

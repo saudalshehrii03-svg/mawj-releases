@@ -13,4 +13,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "MawjTools"
-include(":hdupload", ":audioextract")
+include(":hdupload", ":audioextract", ":editor")

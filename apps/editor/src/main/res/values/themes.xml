@@ -1,0 +1,23 @@
+<resources>
+    <style name="Theme.MawjEdit" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">@color/accent</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorPrimaryContainer">#3A1020</item>
+        <item name="colorSecondary">@color/accent2</item>
+        <item name="colorSurface">@color/surface</item>
+        <item name="colorSurfaceContainerLow">@color/surface</item>
+        <item name="colorSurfaceContainer">@color/surface</item>
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:statusBarColor">@color/bg</item>
+        <item name="android:navigationBarColor">@color/surface</item>
+        <item name="bottomSheetDialogTheme">@style/MawjSheet</item>
+    </style>
+    <style name="MawjSheet" parent="ThemeOverlay.Material3.BottomSheetDialog">
+        <item name="colorPrimary">@color/accent</item>
+        <item name="colorSecondary">@color/accent2</item>
+        <item name="bottomSheetStyle">@style/MawjSheetStyle</item>
+    </style>
+    <style name="MawjSheetStyle" parent="Widget.Material3.BottomSheet.Modal">
+        <item name="backgroundTint">@color/surface</item>
+    </style>
+</resources>

@@ -213,32 +213,44 @@ class Sheet(private val ctx: Context, title: String, subtitle: String? = null) {
         return g
     }
 
-    /** Horizontal row of square previews (filters, transitions...). */
-    fun thumbs(title: String?, items: List<Pair<String, Bitmap?>>, selected: Int, onSelect: (Int) -> Unit): (Int) -> Unit {
+    /** Horizontal row of square still previews (filters...). */
+    fun thumbs(title: String?, items: List<Pair<String, Bitmap?>>, selected: Int, onSelect: (Int) -> Unit): (Int) -> Unit =
+        tiles(title, items.map { (name, bm) ->
+            name to { ImageView(ctx).apply { setImageBitmap(bm); scaleType = ImageView.ScaleType.CENTER_CROP } as View }
+        }, selected, onSelect)
+
+    /** Horizontal row of square preview tiles (any view, e.g. animated previews). */
+    fun tiles(title: String?, items: List<Pair<String, () -> View>>, selected: Int, onSelect: (Int) -> Unit): (Int) -> Unit {
         if (title != null) label(title)
         val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
-        val frames = ArrayList<ImageView>()
+        val frames = ArrayList<android.widget.FrameLayout>()
         fun mark(sel: Int) = frames.forEachIndexed { k, v ->
             v.background = GradientDrawable().apply {
                 cornerRadius = ctx.dp(12).toFloat(); setColor(ctx.col(R.color.surface2))
                 if (k == sel) setStroke(ctx.dp(2), Glass.PINK)
             }
         }
-        items.forEachIndexed { i, (name, bm) ->
+        items.forEachIndexed { i, (name, make) ->
             val col = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
-            val img = ImageView(ctx).apply {
-                setImageBitmap(bm)
-                scaleType = ImageView.ScaleType.CENTER_CROP
-                clipToOutline = true
+            val frame = android.widget.FrameLayout(ctx).apply {
                 setPadding(ctx.dp(2), ctx.dp(2), ctx.dp(2), ctx.dp(2))
                 setOnClickListener { mark(i); onSelect(i) }
             }
-            frames += img
-            col.addView(img, LinearLayout.LayoutParams(ctx.dp(64), ctx.dp(64)))
+            val inner = make().apply {
+                outlineProvider = object : android.view.ViewOutlineProvider() {
+                    override fun getOutline(view: View, outline: android.graphics.Outline) =
+                        outline.setRoundRect(0, 0, view.width, view.height, ctx.dp(10).toFloat())
+                }
+                clipToOutline = true
+                isClickable = false
+            }
+            frame.addView(inner, android.widget.FrameLayout.LayoutParams(-1, -1))
+            frames += frame
+            col.addView(frame, LinearLayout.LayoutParams(ctx.dp(66), ctx.dp(66)))
             col.addView(TextView(ctx).apply {
                 text = name; textSize = 11f; setTextColor(ctx.col(R.color.text2)); maxLines = 1
                 gravity = Gravity.CENTER; setPadding(0, ctx.dp(4), 0, 0)
-            }, LinearLayout.LayoutParams(ctx.dp(72), -2))
+            }, LinearLayout.LayoutParams(ctx.dp(74), -2))
             row.addView(col, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = ctx.dp(6) })
         }
         mark(selected)

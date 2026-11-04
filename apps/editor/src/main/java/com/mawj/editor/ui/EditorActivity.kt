@@ -317,25 +317,44 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         fullscreen = on
         fsAnim?.cancel()
         val bars = listOf<View>(b.topBar, b.bottomPanel, b.toolsBar)
+        val light = resources.getBoolean(R.bool.light_bars)
+        val ctl = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
         if (on) {
             b.fullControls.visibility = View.VISIBLE
+            b.fsBackdrop.visibility = View.VISIBLE
             b.stage.translationZ = 8f
-        } else bars.forEach { it.visibility = View.VISIBLE }
+            ctl.isAppearanceLightStatusBars = false
+            ctl.isAppearanceLightNavigationBars = false
+        } else {
+            bars.forEach { it.visibility = View.VISIBLE }
+            ctl.isAppearanceLightStatusBars = light
+            ctl.isAppearanceLightNavigationBars = light
+        }
         val from = fsProgress
         val to = if (on) 1f else 0f
         fsAnim = android.animation.ValueAnimator.ofFloat(from, to).apply {
             duration = (380 * kotlin.math.abs(to - from)).toLong().coerceAtLeast(120)
             interpolator = android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f)
+            val baseBar = col(R.color.bg)
+            val baseNav = col(R.color.bar)
+            val argb = android.animation.ArgbEvaluator()
             addUpdateListener {
                 fsProgress = it.animatedValue as Float
                 applyPreviewTransform()
                 bars.forEach { v -> v.alpha = 1f - fsProgress }
                 b.fullControls.alpha = fsProgress
+                b.fsBackdrop.alpha = fsProgress
+                window.statusBarColor = argb.evaluate(fsProgress, baseBar, android.graphics.Color.BLACK) as Int
+                window.navigationBarColor = argb.evaluate(fsProgress, baseNav, android.graphics.Color.BLACK) as Int
             }
             addListener(object : android.animation.AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: android.animation.Animator) {
                     if (fsProgress >= 0.999f) bars.forEach { it.visibility = View.INVISIBLE }
-                    if (fsProgress <= 0.001f) { b.fullControls.visibility = View.GONE; b.stage.translationZ = 0f }
+                    if (fsProgress <= 0.001f) {
+                        b.fullControls.visibility = View.GONE
+                        b.fsBackdrop.visibility = View.GONE
+                        b.stage.translationZ = 0f
+                    }
                 }
             })
             start()
@@ -1021,15 +1040,14 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         val sheet = Sheet(this, L.t("حركة المقطع", "Clip animation"), L.t("دخول • خروج • حركة مستمرة", "In • Out • Loop"))
         val anims = com.mawj.editor.engine.ClipAnimations
         val none = L.t("بدون", "None")
-        sheet.chips(L.t("دخول", "In"), listOf(none) + anims.inAnims.map { it.label }, anims.inAnims.indexOfFirst { it.id == c.animIn } + 1) { i ->
-            edit { c.animIn = if (i == 0) "" else anims.inAnims[i - 1].id }
-        }
-        sheet.chips(L.t("خروج", "Out"), listOf(none) + anims.outAnims.map { it.label }, anims.outAnims.indexOfFirst { it.id == c.animOut } + 1) { i ->
-            edit { c.animOut = if (i == 0) "" else anims.outAnims[i - 1].id }
-        }
-        sheet.chips(L.t("حركة مستمرة", "Loop"), listOf(none) + anims.loopAnims.map { it.label }, anims.loopAnims.indexOfFirst { it.id == c.animLoop } + 1) { i ->
-            edit { c.animLoop = if (i == 0) "" else anims.loopAnims[i - 1].id }
-        }
+        val base = Previews.square(thumbs.get(thumbKey(c)))
+        fun tile(kind: String, id: String): () -> View = { AnimTile(this, 1800) { cv, t, sz -> Previews.animation(cv, t, sz, base, kind, id) } }
+        sheet.tiles(L.t("دخول", "In"), listOf(none to tile("in", "")) + anims.inAnims.map { it.label to tile("in", it.id) },
+            anims.inAnims.indexOfFirst { it.id == c.animIn } + 1) { i -> edit { c.animIn = if (i == 0) "" else anims.inAnims[i - 1].id } }
+        sheet.tiles(L.t("خروج", "Out"), listOf(none to tile("out", "")) + anims.outAnims.map { it.label to tile("out", it.id) },
+            anims.outAnims.indexOfFirst { it.id == c.animOut } + 1) { i -> edit { c.animOut = if (i == 0) "" else anims.outAnims[i - 1].id } }
+        sheet.tiles(L.t("حركة مستمرة", "Loop"), listOf(none to tile("loop", "")) + anims.loopAnims.map { it.label to tile("loop", it.id) },
+            anims.loopAnims.indexOfFirst { it.id == c.animLoop } + 1) { i -> edit { c.animLoop = if (i == 0) "" else anims.loopAnims[i - 1].id } }
         sheet.note(L.t("💡 «كين بيرنز» و«تقريب بطيء» تعطي الصور الثابتة حياة، و«نبض» ممتاز مع الأغاني.", "💡 Ken Burns and Slow zoom bring photos to life; Pulse works great with music."))
         sheet.show()
     }
@@ -1262,15 +1280,17 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         var durUs = clip.transitionUs
         val overlapKinds = Transition.entries.filter { it.overlap }
         val motionKinds = Transition.entries.filter { !it.overlap }
-        val ta = thumbs.get(thumbKey(clip))
-        val tb = project.clips.getOrNull(if (all) 1 else index + 1)?.let { thumbs.get(thumbKey(it)) }
+        val ta = Previews.square(thumbs.get(thumbKey(clip)))
+        val tbRaw = project.clips.getOrNull(if (all) 1 else index + 1)?.let { thumbs.get(thumbKey(it)) }
+        val tb = Previews.square(tbRaw ?: gradePreview(thumbs.get(thumbKey(clip)), "cool"))
+        fun anim(k: Transition): () -> View = { AnimTile(this, 2200) { cv, t, sz -> Previews.transition(cv, t, sz, ta, tb, k) } }
         var markMotion: (Int) -> Unit = {}
-        val markOverlap = sheet.thumbs(L.t("✦ دمج متداخل احترافي — المقطعين فوق بعض", "✦ Pro overlap — clips blend together"),
-            overlapKinds.map { it.label to transitionPreview(ta, tb, it) }, overlapKinds.indexOf(kind)) {
+        val markOverlap = sheet.tiles(L.t("✦ دمج متداخل احترافي — المقطعين فوق بعض", "✦ Pro overlap — clips blend together"),
+            overlapKinds.map { it.label to anim(it) }, overlapKinds.indexOf(kind)) {
             kind = overlapKinds[it]; markMotion(-1)
         }
-        markMotion = sheet.thumbs(L.t("حركات القطع", "Cut motions"),
-            motionKinds.map { it.label to transitionPreview(ta, tb, it) }, motionKinds.indexOf(kind)) {
+        markMotion = sheet.tiles(L.t("حركات القطع", "Cut motions"),
+            motionKinds.map { it.label to anim(it) }, motionKinds.indexOf(kind)) {
             kind = motionKinds[it]; markOverlap(-1)
         }
         sheet.slider(L.t("المدة", "Duration"), 0.2f, 2f, durUs / 1e6f, { secs(it) }, 0.1f) { durUs = (it * 1e6).toLong() }

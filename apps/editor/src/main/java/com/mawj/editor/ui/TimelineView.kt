@@ -16,6 +16,7 @@ import android.view.View
 import android.widget.OverScroller
 import com.mawj.editor.model.Transition
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
@@ -30,6 +31,10 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
         fun onTransitionTap(index: Int)
         fun onEmptyTap()
         fun onAudioMoved(index: Int, newStartUs: Long)
+        /** Edge drag on the selected clip / audio: edge 0 = start, 1 = end; delta on the timeline. */
+        fun onClipTrim(index: Int, edge: Int, deltaUs: Long)
+        fun onAudioTrim(index: Int, edge: Int, deltaUs: Long)
+        fun onAddTap()
     }
 
     data class VBlock(val startUs: Long, val durUs: Long, val key: String, val isImage: Boolean, val transition: Transition, val hasText: Boolean)
@@ -74,6 +79,14 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
     private var dragOffsetUs = 0L
     private var dragStartUs = 0L
 
+    // Edge trimming state
+    private var trimKind = 0 // 0 none, 1 clip, 2 audio
+    private var trimEdge = 0
+    private var trimDownX = 0f
+    private var trimDeltaUs = 0L
+    private val handleW = 12 * d
+    private val addRect = RectF()
+
     init {
         layoutDirection = LAYOUT_DIRECTION_LTR
     }
@@ -116,14 +129,18 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
         drawRuler(canvas)
 
         blocks.forEachIndexed { i, b ->
-            val l = x(b.startUs) + 1 * d
-            val r = x(b.startUs + b.durUs) - 1 * d
+            var l = x(b.startUs) + 1 * d
+            var r = x(b.startUs + b.durUs) - 1 * d
+            if (trimKind == 1 && i == selectedClip) {
+                val dpx = trimDeltaUs / 1_000_000f * pxPerSec
+                if (trimEdge == 0) l = min(l + dpx, r - 8 * d) else r = max(r + dpx, l + 8 * d)
+            }
             if (r < 0 || l > width) return@forEachIndexed
             rect.set(l, videoTop, r, videoTop + videoH)
             canvas.save()
             path.reset(); path.addRoundRect(rect, 8 * d, 8 * d, Path.Direction.CW)
             canvas.clipPath(path)
-            paint.color = 0xFF221F33.toInt()
+            paint.color = 0xFF24242C.toInt()
             canvas.drawRect(rect, paint)
             val thumb = thumbProvider(b.key)
             if (thumb != null) {
@@ -146,10 +163,24 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
             canvas.drawRoundRect(l + 4 * d, videoTop + videoH - 18 * d, l + 12 * d + tw, videoTop + videoH - 3 * d, 4 * d, 4 * d, paint)
             canvas.drawText(label, l + 8 * d, videoTop + videoH - 7 * d, text)
             canvas.restore()
-            stroke.color = if (i == selectedClip) 0xFFFF2D7A.toInt() else 0x40FFFFFF
-            stroke.strokeWidth = if (i == selectedClip) 3 * d else 1 * d
-            canvas.drawRoundRect(rect, 8 * d, 8 * d, stroke)
+            if (i == selectedClip) {
+                stroke.color = Color.WHITE; stroke.strokeWidth = 2 * d
+                canvas.drawRoundRect(rect, 8 * d, 8 * d, stroke)
+                drawHandles(canvas, rect)
+            }
         }
+
+        // "+" add button after the last clip
+        if (blocks.isNotEmpty()) {
+            val end = x(blocks.last().startUs + blocks.last().durUs) + 10 * d
+            addRect.set(end, videoTop + 8 * d, end + videoH - 16 * d, videoTop + videoH - 8 * d)
+            paint.color = 0xFF2A2A33.toInt()
+            canvas.drawRoundRect(addRect, 8 * d, 8 * d, paint)
+            paint.color = Color.WHITE
+            val cx = addRect.centerX(); val cy = addRect.centerY(); val k = 7 * d
+            canvas.drawRect(cx - k, cy - 1 * d, cx + k, cy + 1 * d, paint)
+            canvas.drawRect(cx - 1 * d, cy - k, cx + 1 * d, cy + k, paint)
+        } else addRect.setEmpty()
 
         // Transition markers between clips
         for (i in 0 until blocks.size - 1) {
@@ -158,13 +189,14 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
             transitionRect(cx, rect)
             val tr = blocks[i].transition
             val has = tr != Transition.NONE
-            paint.color = if (has) 0xFFFF2D7A.toInt() else 0xE6262338.toInt()
-            canvas.drawOval(rect, paint)
-            stroke.color = 0x80FFFFFF.toInt(); stroke.strokeWidth = 1.5f * d
-            canvas.drawOval(rect, stroke)
-            text.color = Color.WHITE
+            paint.color = if (has) Color.WHITE else 0xFF1C1C22.toInt()
+            canvas.drawRoundRect(rect, 6 * d, 6 * d, paint)
+            stroke.color = 0x55FFFFFF; stroke.strokeWidth = 1 * d
+            canvas.drawRoundRect(rect, 6 * d, 6 * d, stroke)
+            text.color = if (has) Color.BLACK else Color.WHITE
             val s = if (!has) "+" else if (tr.overlap) "✦" else "⇄"
             canvas.drawText(s, cx - text.measureText(s) / 2, rect.centerY() + 4 * d, text)
+            text.color = Color.WHITE
         }
 
         // Audio lanes
@@ -172,20 +204,21 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
             val start = if (i == dragAudio) dragStartUs else a.startUs
             val top = audioTop + a.lane * (laneH + laneGap)
             rect.set(x(start), top, x(start + a.durUs), top + laneH)
+            if (trimKind == 2 && i == selectedAudio) {
+                val dpx = trimDeltaUs / 1_000_000f * pxPerSec
+                if (trimEdge == 0) rect.left = min(rect.left + dpx, rect.right - 8 * d) else rect.right = max(rect.right + dpx, rect.left + 8 * d)
+            }
             if (rect.right < 0 || rect.left > width) return@forEachIndexed
-            paint.shader = android.graphics.LinearGradient(rect.left, 0f, rect.right, 0f,
-                if (i == dragAudio) 0xFFC4A8FF.toInt() else 0xFF7C4DFF.toInt(), 0xFFFF2D7A.toInt(), android.graphics.Shader.TileMode.CLAMP)
-            paint.alpha = if (i == dragAudio) 255 else 210
-            canvas.drawRoundRect(rect, 8 * d, 8 * d, paint)
-            paint.shader = null
-            paint.alpha = 255
+            paint.color = if (i == dragAudio) 0xFF7E5BE0.toInt() else 0xFF4B3A8C.toInt()
+            canvas.drawRoundRect(rect, 6 * d, 6 * d, paint)
             canvas.save()
             canvas.clipRect(rect)
             canvas.drawText("♪ " + a.label, rect.left + 6 * d, rect.centerY() + 4 * d, text)
             canvas.restore()
             if (i == selectedAudio) {
-                stroke.color = Color.WHITE; stroke.strokeWidth = 2.5f * d
-                canvas.drawRoundRect(rect, 8 * d, 8 * d, stroke)
+                stroke.color = Color.WHITE; stroke.strokeWidth = 2 * d
+                canvas.drawRoundRect(rect, 6 * d, 6 * d, stroke)
+                drawHandles(canvas, rect)
             }
         }
         if (audios.isEmpty()) {
@@ -194,9 +227,7 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
             text.color = Color.WHITE
         }
 
-        // Playhead with soft glow
-        paint.color = 0x55FF2D7A
-        canvas.drawRect(width / 2f - 3 * d, rulerH - 4 * d, width / 2f + 3 * d, height.toFloat(), paint)
+        // Playhead
         paint.color = Color.WHITE
         canvas.drawRect(width / 2f - 1 * d, rulerH - 4 * d, width / 2f + 1 * d, height.toFloat(), paint)
         canvas.drawCircle(width / 2f, rulerH - 4 * d, 5 * d, paint)
@@ -218,6 +249,36 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
             s += step
         }
         text.color = Color.WHITE
+    }
+
+    /** White trim handles on both edges of the selected item. */
+    private fun drawHandles(canvas: Canvas, r: RectF) {
+        paint.color = Color.WHITE
+        canvas.drawRoundRect(r.left - handleW / 2, r.top, r.left + handleW / 2, r.bottom, 4 * d, 4 * d, paint)
+        canvas.drawRoundRect(r.right - handleW / 2, r.top, r.right + handleW / 2, r.bottom, 4 * d, 4 * d, paint)
+        paint.color = 0xFF111116.toInt()
+        val cy = r.centerY()
+        canvas.drawRect(r.left - 1 * d, cy - 7 * d, r.left + 1 * d, cy + 7 * d, paint)
+        canvas.drawRect(r.right - 1 * d, cy - 7 * d, r.right + 1 * d, cy + 7 * d, paint)
+    }
+
+    /** Which edge handle (if any) of the selected item is under the finger. */
+    private fun handleAt(px: Float, py: Float): Pair<Int, Int>? {
+        val slop = 18 * d
+        if (selectedClip in blocks.indices && py in videoTop..(videoTop + videoH)) {
+            val b = blocks[selectedClip]
+            if (abs(px - x(b.startUs)) < slop) return 1 to 0
+            if (abs(px - x(b.startUs + b.durUs)) < slop) return 1 to 1
+        }
+        if (selectedAudio in audios.indices) {
+            val a = audios[selectedAudio]
+            val top = audioTop + a.lane * (laneH + laneGap)
+            if (py in (top - 6 * d)..(top + laneH + 6 * d)) {
+                if (abs(px - x(a.startUs)) < slop) return 2 to 0
+                if (abs(px - x(a.startUs + a.durUs)) < slop) return 2 to 1
+            }
+        }
+        return null
     }
 
     /** Marker sits in the middle of the overlap (or on the cut). */
@@ -256,6 +317,8 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
 
         override fun onScroll(e1: MotionEvent?, e2: MotionEvent, distanceX: Float, distanceY: Float): Boolean {
             if (scale.isInProgress || dragAudio >= 0) return false
+            if (!isUserScrubbing && abs(distanceY) > abs(distanceX)) return false // let the panel scroll vertically
+            parent?.requestDisallowInterceptTouchEvent(true)
             isUserScrubbing = true
             moveTo(positionUs + (distanceX / pxPerSec * 1_000_000f).toLong())
             return true
@@ -308,9 +371,37 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        parent?.requestDisallowInterceptTouchEvent(true)
+        if (event.pointerCount > 1) parent?.requestDisallowInterceptTouchEvent(true)
         scale.onTouchEvent(event)
+        // Edge trimming of the selected clip / audio
+        if (event.actionMasked == MotionEvent.ACTION_DOWN && trimKind == 0) {
+            handleAt(event.x, event.y)?.let { (kind, edge) ->
+                trimKind = kind; trimEdge = edge; trimDownX = event.x; trimDeltaUs = 0
+                parent?.requestDisallowInterceptTouchEvent(true)
+                if (!scroller.isFinished) { scroller.forceFinished(true); flinging = false }
+                return true
+            }
+        }
+        if (trimKind != 0) {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_MOVE -> {
+                    trimDeltaUs = ((event.x - trimDownX) / pxPerSec * 1_000_000f).toLong()
+                    invalidate()
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    val kind = trimKind; val delta = trimDeltaUs
+                    trimKind = 0; trimDeltaUs = 0
+                    if (abs(delta) > 20_000) {
+                        if (kind == 1) listener?.onClipTrim(selectedClip, trimEdge, delta)
+                        else listener?.onAudioTrim(selectedAudio, trimEdge, delta)
+                    }
+                    invalidate()
+                }
+            }
+            return true
+        }
         if (dragAudio >= 0) {
+            parent?.requestDisallowInterceptTouchEvent(true)
             when (event.actionMasked) {
                 MotionEvent.ACTION_MOVE -> {
                     dragStartUs = (usAt(event.x) - dragOffsetUs).coerceIn(0, max(0, totalUs - 100_000))
@@ -342,6 +433,7 @@ class TimelineView @JvmOverloads constructor(context: Context, attrs: AttributeS
 
     private fun hitTest(px: Float, py: Float) {
         val l = listener ?: return
+        if (!addRect.isEmpty && addRect.contains(px, py)) { l.onAddTap(); return }
         // Transition markers first (they sit on top of clips).
         for (i in 0 until blocks.size - 1) {
             transitionRect(markerX(i), rect)

@@ -1,35 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/bg_app"
+    android:background="#FF0C0C10"
     android:fitsSystemWindows="true"
     android:orientation="vertical">
 
     <!-- Top bar -->
     <LinearLayout
+        android:id="@+id/topBar"
         android:layout_width="match_parent"
-        android:layout_height="64dp"
+        android:layout_height="52dp"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingStart="12dp"
-        android:paddingEnd="12dp">
+        android:paddingStart="6dp"
+        android:paddingEnd="10dp">
 
         <ImageButton
             android:id="@+id/backButton"
-            android:layout_width="42dp"
-            android:layout_height="42dp"
-            android:background="@drawable/glass_ripple_circle"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="@drawable/btn_flat"
             android:contentDescription="رجوع"
-            android:padding="9dp"
+            android:padding="11dp"
             android:scaleType="fitCenter"
             android:src="@drawable/ic_back" />
 
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
             android:layout_weight="1"
             android:orientation="vertical">
 
@@ -40,7 +41,7 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:textColor="#FFFFFF"
-                android:textSize="16sp"
+                android:textSize="15sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -48,7 +49,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:maxLines="1"
-                android:textColor="#99FFFFFF"
+                android:textColor="#80FFFFFF"
                 android:textSize="11sp" />
         </LinearLayout>
 
@@ -56,9 +57,9 @@
             android:id="@+id/undoButton"
             android:layout_width="40dp"
             android:layout_height="40dp"
-            android:background="@drawable/glass_ripple_circle"
+            android:background="@drawable/btn_flat"
             android:contentDescription="تراجع"
-            android:padding="9dp"
+            android:padding="10dp"
             android:scaleType="fitCenter"
             android:src="@drawable/ic_undo" />
 
@@ -66,26 +67,22 @@
             android:id="@+id/redoButton"
             android:layout_width="40dp"
             android:layout_height="40dp"
-            android:layout_marginStart="6dp"
-            android:background="@drawable/glass_ripple_circle"
+            android:background="@drawable/btn_flat"
             android:contentDescription="إعادة"
-            android:padding="9dp"
+            android:padding="10dp"
             android:scaleType="fitCenter"
             android:src="@drawable/ic_redo" />
 
         <TextView
             android:id="@+id/exportButton"
             android:layout_width="wrap_content"
-            android:layout_height="42dp"
-            android:layout_marginStart="8dp"
-            android:background="@drawable/accent_gradient"
+            android:layout_height="36dp"
+            android:layout_marginStart="6dp"
+            android:background="@drawable/btn_accent"
             android:clickable="true"
-            android:drawableStart="@drawable/i_export"
-            android:drawablePadding="6dp"
-            android:elevation="6dp"
             android:focusable="true"
             android:gravity="center"
-            android:paddingStart="14dp"
+            android:paddingStart="16dp"
             android:paddingEnd="16dp"
             android:text="تصدير"
             android:textColor="#FFFFFF"
@@ -93,18 +90,13 @@
             android:textStyle="bold" />
     </LinearLayout>
 
-    <!-- Preview -->
+    <!-- Preview (grows / shrinks with the handle) -->
     <FrameLayout
         android:id="@+id/previewCard"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginStart="14dp"
-        android:layout_marginTop="4dp"
-        android:layout_marginEnd="14dp"
         android:layout_weight="1"
-        android:background="@drawable/glass_card"
-        android:clipToOutline="true"
-        android:padding="1dp">
+        android:background="#FF000000">
 
         <androidx.media3.ui.PlayerView
             android:id="@+id/playerView"
@@ -122,9 +114,9 @@
             android:gravity="center"
             android:lineSpacingExtra="6dp"
             android:padding="24dp"
-            android:text="🎬\nأضف مقاطع أو صور للبدء"
-            android:textColor="#B3FFFFFF"
-            android:textSize="15sp" />
+            android:text="أضف مقاطع أو صور للبدء"
+            android:textColor="#80FFFFFF"
+            android:textSize="14sp" />
 
         <TextView
             android:id="@+id/bridgeStatus"
@@ -134,107 +126,167 @@
             android:layout_marginTop="10dp"
             android:background="@drawable/glass_pill"
             android:paddingStart="12dp"
-            android:paddingTop="5dp"
+            android:paddingTop="4dp"
             android:paddingEnd="12dp"
-            android:paddingBottom="5dp"
-            android:text="✨ جاري تجهيز الدمج…"
+            android:paddingBottom="4dp"
+            android:text="جاري تجهيز الدمج…"
             android:textColor="#FFFFFF"
             android:textSize="12sp"
             android:visibility="gone" />
-    </FrameLayout>
 
-    <!-- Transport -->
-    <FrameLayout
-        android:layout_width="match_parent"
-        android:layout_height="64dp"
-        android:layoutDirection="ltr"
-        android:paddingStart="18dp"
-        android:paddingEnd="18dp">
-
-        <TextView
-            android:id="@+id/timeText"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_vertical|start"
-            android:background="@drawable/glass_pill"
-            android:fontFeatureSettings="tnum"
-            android:paddingStart="12dp"
-            android:paddingTop="6dp"
-            android:paddingEnd="12dp"
-            android:paddingBottom="6dp"
-            android:text="00:00.00"
-            android:textColor="#FFFFFF"
-            android:textSize="13sp" />
-
-        <ImageButton
-            android:id="@+id/playButton"
-            android:layout_width="52dp"
-            android:layout_height="52dp"
-            android:layout_gravity="center"
-            android:background="@drawable/accent_circle"
-            android:contentDescription="تشغيل"
-            android:elevation="6dp"
-            android:padding="13dp"
-            android:scaleType="fitCenter"
-            android:src="@drawable/ic_play" />
-
-        <TextView
-            android:id="@+id/durationText"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_vertical|end"
-            android:fontFeatureSettings="tnum"
-            android:text="00:00.00"
-            android:textColor="#80FFFFFF"
-            android:textSize="13sp" />
-    </FrameLayout>
-
-    <!-- Timeline -->
-    <FrameLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="10dp"
-        android:layout_marginEnd="10dp"
-        android:background="@drawable/glass_panel"
-        android:clipToOutline="true"
-        android:paddingTop="6dp"
-        android:paddingBottom="4dp">
-
-        <com.mawj.editor.ui.TimelineView
-            android:id="@+id/timeline"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
-    </FrameLayout>
-
-    <!-- Context label + tools -->
-    <TextView
-        android:id="@+id/toolsTitle"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="20dp"
-        android:layout_marginTop="8dp"
-        android:textColor="#99FFFFFF"
-        android:textSize="12sp" />
-
-    <HorizontalScrollView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="10dp"
-        android:layout_marginTop="4dp"
-        android:layout_marginEnd="10dp"
-        android:layout_marginBottom="10dp"
-        android:background="@drawable/glass_panel"
-        android:clipToOutline="true"
-        android:scrollbars="none">
-
+        <!-- Full screen controls -->
         <LinearLayout
-            android:id="@+id/tools"
+            android:id="@+id/fullControls"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            android:background="#99000000"
+            android:gravity="center_vertical"
+            android:layoutDirection="ltr"
+            android:orientation="horizontal"
+            android:padding="10dp"
+            android:visibility="gone">
+
+            <ImageButton
+                android:id="@+id/fullPlay"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="@drawable/btn_flat"
+                android:contentDescription="تشغيل"
+                android:padding="10dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_play" />
+
+            <SeekBar
+                android:id="@+id/fullSeek"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:max="1000"
+                android:progressTint="#FFFF2D7A"
+                android:thumbTint="#FFFFFFFF" />
+
+            <ImageButton
+                android:id="@+id/fullExit"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="@drawable/btn_flat"
+                android:contentDescription="خروج"
+                android:padding="11dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/i_close" />
+        </LinearLayout>
+    </FrameLayout>
+
+    <!-- Bottom editor panel; its height is set by dragging the handle -->
+    <LinearLayout
+        android:id="@+id/bottomPanel"
+        android:layout_width="match_parent"
+        android:layout_height="380dp"
+        android:background="#FF0C0C10"
+        android:orientation="vertical">
+
+        <!-- Drag handle + transport -->
+        <FrameLayout
+            android:id="@+id/handle"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layoutDirection="ltr"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp">
+
+            <View
+                android:layout_width="36dp"
+                android:layout_height="4dp"
+                android:layout_gravity="top|center_horizontal"
+                android:layout_marginTop="5dp"
+                android:background="@drawable/handle_bar" />
+
+            <TextView
+                android:id="@+id/timeText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical|start"
+                android:fontFeatureSettings="tnum"
+                android:text="00:00.00"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp" />
+
+            <TextView
+                android:id="@+id/durationText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:layout_marginStart="72dp"
+                android:fontFeatureSettings="tnum"
+                android:text="/ 00:00.00"
+                android:textColor="#66FFFFFF"
+                android:textSize="13sp" />
+
+            <ImageButton
+                android:id="@+id/playButton"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_gravity="center"
+                android:layout_marginTop="3dp"
+                android:background="@drawable/btn_flat"
+                android:contentDescription="تشغيل"
+                android:padding="10dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_play" />
+
+            <ImageButton
+                android:id="@+id/fullButton"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_gravity="center_vertical|end"
+                android:background="@drawable/btn_flat"
+                android:contentDescription="ملء الشاشة"
+                android:padding="10dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/i_fit" />
+        </FrameLayout>
+
+        <!-- Timeline (scrolls vertically when the panel is small) -->
+        <androidx.core.widget.NestedScrollView
+            android:id="@+id/timelineScroll"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:background="#FF111116"
+            android:fillViewport="true">
+
+            <com.mawj.editor.ui.TimelineView
+                android:id="@+id/timeline"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingTop="4dp" />
+        </androidx.core.widget.NestedScrollView>
+
+        <TextView
+            android:id="@+id/toolsTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:paddingStart="6dp"
-            android:paddingTop="10dp"
-            android:paddingEnd="6dp"
-            android:paddingBottom="8dp" />
-    </HorizontalScrollView>
+            android:layout_marginStart="16dp"
+            android:layout_marginTop="6dp"
+            android:maxLines="1"
+            android:textColor="#80FFFFFF"
+            android:textSize="11sp" />
+
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:id="@+id/tools"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:paddingStart="4dp"
+                android:paddingTop="6dp"
+                android:paddingEnd="4dp"
+                android:paddingBottom="8dp" />
+        </HorizontalScrollView>
+    </LinearLayout>
 </LinearLayout>

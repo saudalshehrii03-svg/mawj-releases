@@ -124,10 +124,23 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         b.redoButton.setOnClickListener { redo() }
         b.exportButton.setOnClickListener { showExport() }
         b.playButton.setOnClickListener { togglePlay() }
+        b.fullPlay.setOnClickListener { togglePlay() }
+        b.fullButton.setOnClickListener { setFullscreen(true) }
+        b.fullExit.setOnClickListener { setFullscreen(false) }
+        b.fullSeek.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: android.widget.SeekBar, v: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                val us = project.durationUs * v / 1000
+                player?.seekTo(us / 1000); b.timeline.setPosition(us); updateTime()
+            }
+            override fun onStartTrackingTouch(sb: android.widget.SeekBar) { player?.pause() }
+            override fun onStopTrackingTouch(sb: android.widget.SeekBar) {}
+        })
+        setupSplit()
         b.timeline.listener = this
         b.timeline.thumbProvider = { key -> thumbFor(key) }
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() = leave()
+            override fun handleOnBackPressed() = if (fullscreen) setFullscreen(false) else leave()
         })
 
         refreshAll()
@@ -160,6 +173,71 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
     private fun leave() {
         store.save(project)
         finish()
+    }
+
+    // ---------- Layout: resizable preview / timeline, full screen ----------
+
+    private var fullscreen = false
+    private val splitPrefs by lazy { getSharedPreferences("editor_ui", MODE_PRIVATE) }
+
+    private fun minPanel() = dp(170)
+    private fun maxPanel() = (resources.displayMetrics.heightPixels * 0.68f).toInt()
+
+    private fun setPanelHeight(h: Int) {
+        val v = h.coerceIn(minPanel(), maxPanel())
+        b.bottomPanel.layoutParams = b.bottomPanel.layoutParams.apply { height = v }
+    }
+
+    @android.annotation.SuppressLint("ClickableViewAccessibility")
+    private fun setupSplit() {
+        setPanelHeight(splitPrefs.getInt("panel_h", dp(380)))
+        // Drag the handle (or swipe vertically on the preview) to resize.
+        var startY = 0f
+        var startH = 0
+        b.handle.setOnTouchListener { _, e ->
+            when (e.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> { startY = e.rawY; startH = b.bottomPanel.height }
+                android.view.MotionEvent.ACTION_MOVE -> setPanelHeight(startH - (e.rawY - startY).toInt())
+                android.view.MotionEvent.ACTION_UP -> splitPrefs.edit().putInt("panel_h", b.bottomPanel.height).apply()
+            }
+            true
+        }
+        val detector = android.view.GestureDetector(this, object : android.view.GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(e: android.view.MotionEvent): Boolean { startH = b.bottomPanel.height; return true }
+            override fun onSingleTapConfirmed(e: android.view.MotionEvent): Boolean {
+                if (fullscreen) b.fullControls.visibility = if (b.fullControls.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+                else togglePlay()
+                return true
+            }
+            override fun onDoubleTap(e: android.view.MotionEvent): Boolean { setFullscreen(!fullscreen); return true }
+            override fun onScroll(e1: android.view.MotionEvent?, e2: android.view.MotionEvent, dx: Float, dy: Float): Boolean {
+                if (fullscreen || e1 == null) return false
+                setPanelHeight(startH - (e2.rawY - e1.rawY).toInt())
+                return true
+            }
+        })
+        b.playerView.setOnTouchListener { _, e ->
+            detector.onTouchEvent(e)
+            if (e.actionMasked == android.view.MotionEvent.ACTION_UP && !fullscreen) {
+                splitPrefs.edit().putInt("panel_h", b.bottomPanel.height).apply()
+            }
+            true
+        }
+    }
+
+    private fun setFullscreen(on: Boolean) {
+        if (project.clips.isEmpty()) return
+        fullscreen = on
+        val vis = if (on) View.GONE else View.VISIBLE
+        b.topBar.visibility = vis
+        b.bottomPanel.visibility = vis
+        b.fullControls.visibility = if (on) View.VISIBLE else View.GONE
+        val ctl = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
+        if (on) {
+            ctl.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            ctl.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        } else ctl.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        updateTime()
     }
 
     // ---------- Edit plumbing ----------
@@ -341,12 +419,15 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
     }
 
     private fun updatePlayIcon() {
-        b.playButton.setImageResource(if (player?.isPlaying == true) R.drawable.ic_pause else R.drawable.ic_play)
+        val icon = if (player?.isPlaying == true) R.drawable.ic_pause else R.drawable.ic_play
+        b.playButton.setImageResource(icon)
+        b.fullPlay.setImageResource(icon)
     }
 
     private fun updateTime() {
         b.timeText.text = fmt(b.timeline.positionUs)
-        b.durationText.text = fmt(project.durationUs)
+        b.durationText.text = "/ " + fmt(project.durationUs)
+        if (fullscreen && project.durationUs > 0) b.fullSeek.progress = (b.timeline.positionUs * 1000 / project.durationUs).toInt()
     }
 
     private fun fmt(us: Long): String {
@@ -405,6 +486,34 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
         buildTools()
     }
 
+    override fun onAddTap() = launchMediaPicker()
+
+    override fun onClipTrim(index: Int, edge: Int, deltaUs: Long) {
+        val c = project.clips.getOrNull(index) ?: return
+        edit {
+            if (c.type == ClipType.IMAGE) {
+                val dur = (c.timelineUs + if (edge == 0) -deltaUs else deltaUs).coerceIn(300_000, 60_000_000)
+                c.sourceDurationUs = dur; c.trimStartUs = 0; c.trimEndUs = dur
+            } else if (edge == 0) {
+                c.trimStartUs = (c.trimStartUs + (deltaUs * c.speed).toLong()).coerceIn(0, c.trimEndUs - 200_000)
+            } else {
+                c.trimEndUs = (c.trimEndUs + (deltaUs * c.speed).toLong()).coerceIn(c.trimStartUs + 200_000, c.sourceDurationUs)
+            }
+        }
+    }
+
+    override fun onAudioTrim(index: Int, edge: Int, deltaUs: Long) {
+        val a = project.audios.getOrNull(index) ?: return
+        edit {
+            if (edge == 0) {
+                val d = deltaUs.coerceIn(-minOf(a.trimStartUs, a.startAtUs), a.lengthUs - 200_000)
+                a.trimStartUs += d; a.startAtUs += d
+            } else {
+                a.trimEndUs = (a.trimEndUs + deltaUs).coerceIn(a.trimStartUs + 200_000, a.sourceDurationUs)
+            }
+        }
+    }
+
     // ---------- Tools ----------
 
     private fun tool(icon: Int, label: String, accent: Boolean = false, onClick: () -> Unit) {
@@ -415,18 +524,17 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
             isClickable = true
             setOnClickListener { onClick() }
         }
+        item.background = getDrawable(R.drawable.btn_flat)
         item.addView(ImageView(this).apply {
             setImageResource(icon)
-            setBackgroundResource(if (accent) R.drawable.accent_circle else R.drawable.glass_ripple_circle)
-            setPadding(dp(11), dp(11), dp(11), dp(11))
-            isDuplicateParentStateEnabled = true
-        }, LinearLayout.LayoutParams(dp(46), dp(46)))
+            if (accent) imageTintList = android.content.res.ColorStateList.valueOf(Glass.PINK)
+        }, LinearLayout.LayoutParams(dp(24), dp(24)).apply { topMargin = dp(6) })
         item.addView(TextView(this).apply {
             text = label; textSize = 11f; gravity = Gravity.CENTER
-            setTextColor(0xE6FFFFFF.toInt()); maxLines = 1
-            setPadding(0, dp(5), 0, 0)
+            setTextColor(if (accent) Glass.PINK else 0xD9FFFFFF.toInt()); maxLines = 1
+            setPadding(0, dp(6), 0, dp(4))
         })
-        b.tools.addView(item, LinearLayout.LayoutParams(dp(72), LinearLayout.LayoutParams.WRAP_CONTENT))
+        b.tools.addView(item, LinearLayout.LayoutParams(dp(66), LinearLayout.LayoutParams.WRAP_CONTENT))
     }
 
     private fun buildTools() {
@@ -469,7 +577,7 @@ class EditorActivity : AppCompatActivity(), TimelineView.Listener {
                 tool(R.drawable.i_trash, "حذف") { edit { project.audios.removeAt(selAudio); selAudio = -1 } }
             }
             else -> {
-                b.toolsTitle.text = "الأدوات • اضغط على مقطع أو صوت لتعديله"
+                b.toolsTitle.text = "اضغط مقطع لتعديله • اسحب الحواف للقص • اضغط المعاينة مرتين لملء الشاشة"
                 tool(R.drawable.i_film, "إضافة مقطع", accent = true) { launchMediaPicker() }
                 tool(R.drawable.i_music, "إضافة صوت") { pickAudio.launch(arrayOf("audio/*")) }
                 if (project.clips.size > 1) tool(R.drawable.i_sparkles, "انتقال للكل") { showTransition(-1) }

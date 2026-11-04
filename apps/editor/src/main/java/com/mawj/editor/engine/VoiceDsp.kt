@@ -92,6 +92,8 @@ class VoiceDsp(private val fx: AudioFx, private val rate: Int, private val ch: I
         val ola = FloatArray(n)
         val noise = FloatArray(n / 2 + 1)
         val gain = FloatArray(n / 2 + 1) { 1f }
+        val mags = FloatArray(n / 2 + 1)
+        val peak = BooleanArray(n / 2 + 1)
         var frames = 0
         val re = FloatArray(n); val im = FloatArray(n)
         val out = ArrayDeque<Float>().apply { repeat(hop) { addLast(0f) } }
@@ -110,12 +112,23 @@ class VoiceDsp(private val fx: AudioFx, private val rate: Int, private val ch: I
             for (i in 0 until n) { re[i] = inBuf[i] * win[i]; im[i] = 0f }
             fft(re, im, false)
             val floor = 1f - 0.85f * nr
+            for (k in 0..n / 2) mags[k] = sqrt(re[k] * re[k] + im[k] * im[k]) + 1e-9f
+            // Tonal protection: noise is broadband, voices / notes are sharp spectral peaks (+ their 2 neighbours).
+            java.util.Arrays.fill(peak, false)
+            for (k in 3..n / 2 - 3) {
+                val side = (mags[k - 3] + mags[k + 3]) / 2f
+                if (mags[k] > side * 5f && mags[k] >= mags[k - 1] && mags[k] >= mags[k + 1]) {
+                    for (j in k - 2..k + 2) peak[j] = true
+                }
+            }
             for (k in 0..n / 2) {
-                val mag = sqrt(re[k] * re[k] + im[k] * im[k]) + 1e-9f
+                val mag = mags[k]
+                val tonal = peak[k]
                 // Minimum-statistics style noise tracker: falls fast, rises slowly.
                 noise[k] = if (frames < 6) (if (frames == 0) mag else min(noise[k], mag) * 0.6f + noise[k] * 0.4f)
-                else if (mag < noise[k]) noise[k] * 0.85f + mag * 0.15f else noise[k] * 1.0035f
-                val g = max(floor, 1f - nr * 2.2f * noise[k] / mag)
+                else if (mag < noise[k]) noise[k] * 0.85f + mag * 0.15f else noise[k] * 1.002f
+                var g = max(floor, 1f - nr * 2.2f * noise[k] / mag)
+                if (tonal) g = max(g, 0.92f)
                 gain[k] = gain[k] * 0.55f + g * 0.45f
                 re[k] *= gain[k]; im[k] *= gain[k]
                 if (k in 1 until n / 2) { re[n - k] = re[k]; im[n - k] = -im[k] }
